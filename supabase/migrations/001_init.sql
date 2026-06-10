@@ -3,6 +3,8 @@
 create table items (
   id uuid primary key default gen_random_uuid(),
   type text,
+  fandom text,
+  sku text,
   name text not null,
   cost_price numeric(10,2),
   sale_price numeric(10,2),

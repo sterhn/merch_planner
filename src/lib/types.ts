@@ -1,6 +1,8 @@
 export interface Item {
   id: string
   type: string | null
+  fandom: string | null
+  sku: string | null
   name: string
   cost_price: number | null
   sale_price: number | null

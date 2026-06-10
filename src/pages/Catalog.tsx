@@ -6,7 +6,7 @@ import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
-const EMPTY = { type: '', name: '', cost_price: '', sale_price: '', stock_qty: '' }
+const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '' }
 
 export default function Catalog() {
   const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
@@ -22,7 +22,11 @@ export default function Catalog() {
     const q = search.trim().toLowerCase()
     if (!q) return items ?? []
     return (items ?? []).filter(
-      (i) => i.name.toLowerCase().includes(q) || (i.type ?? '').toLowerCase().includes(q),
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        (i.type ?? '').toLowerCase().includes(q) ||
+        (i.fandom ?? '').toLowerCase().includes(q) ||
+        (i.sku ?? '').toLowerCase().includes(q),
     )
   }, [items, search])
 
@@ -33,6 +37,8 @@ export default function Catalog() {
     } else {
       setForm({
         type: item.type ?? '',
+        fandom: item.fandom ?? '',
+        sku: item.sku ?? '',
         name: item.name,
         cost_price: item.cost_price?.toString() ?? '',
         sale_price: item.sale_price?.toString() ?? '',
@@ -45,6 +51,8 @@ export default function Catalog() {
     e.preventDefault()
     const values = {
       type: form.type || null,
+      fandom: form.fandom || null,
+      sku: form.sku || null,
       name: form.name,
       cost_price: form.cost_price === '' ? null : Number(form.cost_price),
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
@@ -84,8 +92,8 @@ export default function Catalog() {
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{item.name}</p>
-              <p className="text-xs text-gray-500">
-                {item.type ?? '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
+              <p className="truncate text-xs text-gray-500">
+                {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
               </p>
             </div>
             <div className="shrink-0 text-right">
@@ -98,11 +106,19 @@ export default function Catalog() {
 
       <Modal title={editing === 'new' ? 'Add item' : 'Edit item'} open={editing !== null} onClose={() => setEditing(null)}>
         <form onSubmit={save}>
-          <Field label="Type">
-            <input className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="брелок / значок / открытка…" />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Type">
+              <input className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="брелок / значок…" />
+            </Field>
+            <Field label="Fandom">
+              <input className={inputClass} value={form.fandom} onChange={(e) => setForm({ ...form, fandom: e.target.value })} placeholder="kdj / tgcf…" />
+            </Field>
+          </div>
           <Field label="Name">
             <input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="SKU">
+            <input className={inputClass} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="optional product code" />
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Cost ₽">
