@@ -6,6 +6,7 @@ create table items (
   fandom text,
   sku text,
   name text not null,
+  image_url text,
   cost_price numeric(10,2),
   sale_price numeric(10,2),
   profit numeric(10,2) generated always as (coalesce(sale_price, 0) - coalesce(cost_price, 0)) stored,
@@ -124,3 +125,16 @@ create policy "authenticated full access" on shelf_items
   for all to authenticated using (true) with check (true);
 create policy "authenticated full access" on expenses
   for all to authenticated using (true) with check (true);
+
+-- Storage bucket for item photos. Public read (images are served by URL),
+-- only the authenticated user can upload or delete.
+insert into storage.buckets (id, name, public) values ('item-images', 'item-images', true);
+
+create policy "authenticated upload item images" on storage.objects
+  for insert to authenticated with check (bucket_id = 'item-images');
+create policy "authenticated update item images" on storage.objects
+  for update to authenticated using (bucket_id = 'item-images');
+create policy "authenticated delete item images" on storage.objects
+  for delete to authenticated using (bucket_id = 'item-images');
+create policy "public read item images" on storage.objects
+  for select using (bucket_id = 'item-images');

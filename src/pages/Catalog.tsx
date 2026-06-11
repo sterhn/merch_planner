@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
+import { uploadItemImage } from '../lib/images'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
-const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '' }
+const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
 export default function Catalog() {
   const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
@@ -17,6 +18,8 @@ export default function Catalog() {
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -32,6 +35,7 @@ export default function Catalog() {
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
+    setPhotoFile(null)
     if (item === 'new') {
       setForm(EMPTY)
     } else {
@@ -43,12 +47,25 @@ export default function Catalog() {
         cost_price: item.cost_price?.toString() ?? '',
         sale_price: item.sale_price?.toString() ?? '',
         stock_qty: item.stock_qty?.toString() ?? '',
+        image_url: item.image_url ?? '',
       })
     }
   }
 
-  function save(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault()
+    let imageUrl = form.image_url || null
+    if (photoFile) {
+      setUploading(true)
+      try {
+        imageUrl = await uploadItemImage(photoFile)
+      } catch {
+        alert('Photo upload failed — check that the item-images bucket exists (see README).')
+        setUploading(false)
+        return
+      }
+      setUploading(false)
+    }
     const values = {
       type: form.type || null,
       fandom: form.fandom || null,
@@ -57,6 +74,7 @@ export default function Catalog() {
       cost_price: form.cost_price === '' ? null : Number(form.cost_price),
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
       stock_qty: form.stock_qty === '' ? null : Number(form.stock_qty),
+      image_url: imageUrl,
     }
     if (editing === 'new') insert.mutate(values, { onSuccess: () => setEditing(null) })
     else if (editing) update.mutate({ id: editing.id, values }, { onSuccess: () => setEditing(null) })
@@ -90,7 +108,10 @@ export default function Catalog() {
             onClick={() => openEditor(item)}
             className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
           >
-            <div className="min-w-0">
+            {item.image_url && (
+              <img src={item.image_url} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+            )}
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{item.name}</p>
               <p className="truncate text-xs text-gray-500">
                 {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
@@ -120,6 +141,36 @@ export default function Catalog() {
           <Field label="SKU">
             <input className={inputClass} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="optional product code" />
           </Field>
+          <Field label="Photo">
+            <div className="flex items-center gap-3">
+              {(photoFile || form.image_url) && (
+                <img
+                  src={photoFile ? URL.createObjectURL(photoFile) : form.image_url}
+                  alt=""
+                  className="size-14 rounded-lg object-cover"
+                />
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+                className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:text-xs file:font-medium file:text-violet-700"
+              />
+              {(photoFile || form.image_url) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoFile(null)
+                    setForm({ ...form, image_url: '' })
+                  }}
+                  className="shrink-0 rounded p-1 text-gray-400 hover:text-red-600"
+                  aria-label="Remove photo"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Cost ₽">
               <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
@@ -131,8 +182,8 @@ export default function Catalog() {
               <input className={inputClass} type="number" inputMode="numeric" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} />
             </Field>
           </div>
-          <PrimaryButton type="submit" disabled={insert.isPending || update.isPending}>
-            Save
+          <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
+            {uploading ? 'Uploading photo…' : 'Save'}
           </PrimaryButton>
           {editing !== 'new' && editing && (
             <button
