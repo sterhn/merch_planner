@@ -60,6 +60,15 @@ export default function Catalog() {
     })
   }, [items, search, typeFilter, fandomFilter])
 
+  function autoSku(fandom: string) {
+    const prefix = fandom.replace(/[\[\]]/g, '').toUpperCase()
+    if (!prefix) return ''
+    const count = (items ?? []).filter(
+      (i) => (i.fandom ?? '').replace(/[\[\]]/g, '').toUpperCase() === prefix,
+    ).length
+    return `${prefix}-${String(count + 1).padStart(2, '0')}`
+  }
+
   function openEditor(item: Item | 'new') {
     setEditing(item)
     setPhotoFile(null)
@@ -174,12 +183,34 @@ export default function Catalog() {
 
       <Modal title={editing === 'new' ? 'Add item' : 'Edit item'} open={editing !== null} onClose={() => setEditing(null)}>
         <form onSubmit={save}>
+          <datalist id="type-options">
+            {types.map((t) => <option key={t} value={t} />)}
+          </datalist>
+          <datalist id="fandom-options">
+            {fandoms.map((f) => <option key={f} value={f} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
-              <input className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="брелок / значок…" />
+              <input
+                list="type-options"
+                className={inputClass}
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                placeholder="брелок / значок…"
+              />
             </Field>
             <Field label="Fandom">
-              <input className={inputClass} value={form.fandom} onChange={(e) => setForm({ ...form, fandom: e.target.value })} placeholder="kdj / tgcf…" />
+              <input
+                list="fandom-options"
+                className={inputClass}
+                value={form.fandom}
+                onChange={(e) => {
+                  const fandom = e.target.value
+                  const sku = form.sku || autoSku(fandom)
+                  setForm({ ...form, fandom, sku })
+                }}
+                placeholder="kdj / tgcf…"
+              />
             </Field>
           </div>
           <Field label="Name">
