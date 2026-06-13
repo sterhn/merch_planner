@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { uploadItemImage } from '../lib/images'
@@ -9,6 +9,18 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${active ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 shadow-sm hover:bg-violet-50'}`}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function Catalog() {
   const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
   const insert = useInsert<Item>('items')
@@ -16,22 +28,37 @@ export default function Catalog() {
   const remove = useDelete('items')
 
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [fandomFilter, setFandomFilter] = useState<string | null>(null)
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
 
+  const types = useMemo(() => {
+    const s = new Set((items ?? []).map((i) => i.type).filter(Boolean) as string[])
+    return Array.from(s).sort()
+  }, [items])
+
+  const fandoms = useMemo(() => {
+    const s = new Set((items ?? []).map((i) => i.fandom).filter(Boolean) as string[])
+    return Array.from(s).sort()
+  }, [items])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return items ?? []
-    return (items ?? []).filter(
-      (i) =>
+    return (items ?? []).filter((i) => {
+      if (typeFilter && i.type !== typeFilter) return false
+      if (fandomFilter && i.fandom !== fandomFilter) return false
+      if (!q) return true
+      return (
         i.name.toLowerCase().includes(q) ||
         (i.type ?? '').toLowerCase().includes(q) ||
         (i.fandom ?? '').toLowerCase().includes(q) ||
-        (i.sku ?? '').toLowerCase().includes(q),
-    )
-  }, [items, search])
+        (i.sku ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [items, search, typeFilter, fandomFilter])
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
@@ -95,8 +122,26 @@ export default function Catalog() {
         placeholder="Search…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={`${inputClass} mb-4`}
+        className={`${inputClass} mb-3`}
       />
+
+      {types.length > 0 && (
+        <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+          <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>All types</FilterChip>
+          {types.map((t) => (
+            <FilterChip key={t} active={typeFilter === t} onClick={() => setTypeFilter(typeFilter === t ? null : t)}>{t}</FilterChip>
+          ))}
+        </div>
+      )}
+
+      {fandoms.length > 0 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          <FilterChip active={fandomFilter === null} onClick={() => setFandomFilter(null)}>All fandoms</FilterChip>
+          {fandoms.map((f) => (
+            <FilterChip key={f} active={fandomFilter === f} onClick={() => setFandomFilter(fandomFilter === f ? null : f)}>{f}</FilterChip>
+          ))}
+        </div>
+      )}
 
       {isLoading && <EmptyState message="Loading…" />}
       {!isLoading && filtered.length === 0 && <EmptyState message="No items yet." />}
@@ -108,8 +153,10 @@ export default function Catalog() {
             onClick={() => openEditor(item)}
             className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
           >
-            {item.image_url && (
-              <img src={item.image_url} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+            {item.image_url ? (
+              <img src={item.image_url} alt="" className="size-16 shrink-0 rounded-lg object-cover" loading="lazy" />
+            ) : (
+              <div className="size-16 shrink-0 rounded-lg bg-gray-100" />
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{item.name}</p>
