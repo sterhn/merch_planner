@@ -21,6 +21,42 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
+function ComboSelect({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder?: string
+}) {
+  const [adding, setAdding] = useState(!options.includes(value) && value !== '')
+  const selectVal = adding ? '__new__' : value
+
+  return (
+    <div className="space-y-2">
+      <select
+        className={inputClass}
+        value={selectVal}
+        onChange={(e) => {
+          if (e.target.value === '__new__') { setAdding(true); onChange('') }
+          else { setAdding(false); onChange(e.target.value) }
+        }}
+      >
+        <option value="">—</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        <option value="__new__">＋ Add new…</option>
+      </select>
+      {adding && (
+        <input
+          autoFocus
+          className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? 'Type new value…'}
+        />
+      )}
+    </div>
+  )
+}
+
 export default function Catalog() {
   const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
   const insert = useInsert<Item>('items')
@@ -183,32 +219,23 @@ export default function Catalog() {
 
       <Modal title={editing === 'new' ? 'Add item' : 'Edit item'} open={editing !== null} onClose={() => setEditing(null)}>
         <form onSubmit={save}>
-          <datalist id="type-options">
-            {types.map((t) => <option key={t} value={t} />)}
-          </datalist>
-          <datalist id="fandom-options">
-            {fandoms.map((f) => <option key={f} value={f} />)}
-          </datalist>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
-              <input
-                list="type-options"
-                className={inputClass}
+              <ComboSelect
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                onChange={(v) => setForm({ ...form, type: v })}
+                options={types}
                 placeholder="брелок / значок…"
               />
             </Field>
             <Field label="Fandom">
-              <input
-                list="fandom-options"
-                className={inputClass}
+              <ComboSelect
                 value={form.fandom}
-                onChange={(e) => {
-                  const fandom = e.target.value
-                  const sku = form.sku || autoSku(fandom)
-                  setForm({ ...form, fandom, sku })
+                onChange={(v) => {
+                  const sku = form.sku || autoSku(v)
+                  setForm({ ...form, fandom: v, sku })
                 }}
+                options={fandoms}
                 placeholder="kdj / tgcf…"
               />
             </Field>
