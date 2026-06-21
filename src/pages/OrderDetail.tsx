@@ -184,7 +184,11 @@ export default function OrderDetail() {
             const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
             return (
               <li key={l.id} className="flex items-center justify-between gap-2 py-2">
-                <div className="min-w-0">
+                {catalogItem?.image_url
+                  ? <img src={catalogItem.image_url} alt="" className="size-8 shrink-0 rounded object-cover" loading="lazy" />
+                  : <div className="size-8 shrink-0 rounded bg-gray-100" />
+                }
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm">
                     {catalogItem?.name ?? l.name_text ?? '—'}
                     {l.qty > 1 && <span className="text-gray-500"> ×{l.qty}</span>}

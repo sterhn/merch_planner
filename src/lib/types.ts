@@ -18,6 +18,10 @@ export interface Item {
   bundle_items?: BundleComponent[]
 }
 
+export interface OrderWithPhotos extends Order {
+  order_items: { item: { image_url: string | null } | null }[]
+}
+
 export const DELIVERY_METHODS = [
   'почта',
   'сдэк',
