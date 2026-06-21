@@ -58,7 +58,10 @@ function ComboSelect({ value, onChange, options, placeholder }: {
 }
 
 export default function Catalog() {
-  const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
+  const { data: items, isLoading } = useList<Item>('items', {
+    orderBy: 'type',
+    select: '*, bundle_items(qty, component:component_id(id, name))',
+  })
   const insert = useInsert<Item>('items')
   const update = useUpdate<Item>('items')
   const remove = useDelete('items')
@@ -208,6 +211,11 @@ export default function Catalog() {
               <p className="truncate text-xs text-gray-500">
                 {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
               </p>
+              {item.bundle_items && item.bundle_items.length > 0 && (
+                <p className="truncate text-xs text-violet-500 mt-0.5">
+                  {item.bundle_items.map((b) => (b.qty > 1 ? `${b.component.name} ×${b.qty}` : b.component.name)).join(' + ')}
+                </p>
+              )}
             </div>
             <div className="shrink-0 text-right">
               <p className="text-sm font-semibold">{formatRub(item.sale_price)}</p>
