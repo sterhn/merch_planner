@@ -1,8 +1,3 @@
-export interface BundleComponent {
-  qty: number
-  component: { id: string; name: string }
-}
-
 export interface Item {
   id: string
   type: string | null
@@ -15,7 +10,6 @@ export interface Item {
   profit: number | null
   stock_qty: number | null
   created_at: string
-  bundle_items?: BundleComponent[]
 }
 
 export interface OrderWithPhotos extends Order {

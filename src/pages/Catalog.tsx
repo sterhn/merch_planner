@@ -57,10 +57,12 @@ function ComboSelect({ value, onChange, options, placeholder }: {
   )
 }
 
+interface RawBundleItem { bundle_id: string; component_id: string; qty: number }
+
 export default function Catalog() {
-  const { data: items, isLoading } = useList<Item>('items', {
-    orderBy: 'type',
-    select: '*, bundle_items(qty, component:component_id(id, name))',
+  const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
+  const { data: rawBundles } = useList<RawBundleItem>('bundle_items', {
+    select: 'bundle_id, component_id, qty',
   })
   const insert = useInsert<Item>('items')
   const update = useUpdate<Item>('items')
@@ -73,6 +75,24 @@ export default function Catalog() {
   const [form, setForm] = useState(EMPTY)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  const itemById = useMemo(() => {
+    const m = new Map<string, Item>()
+    for (const i of items ?? []) m.set(i.id, i)
+    return m
+  }, [items])
+
+  const bundleMap = useMemo(() => {
+    const m = new Map<string, { name: string; qty: number }[]>()
+    for (const b of rawBundles ?? []) {
+      const name = itemById.get(b.component_id)?.name
+      if (!name) continue
+      const arr = m.get(b.bundle_id) ?? []
+      arr.push({ name, qty: b.qty })
+      m.set(b.bundle_id, arr)
+    }
+    return m
+  }, [rawBundles, itemById])
 
   const types = useMemo(() => {
     const s = new Set((items ?? []).map((i) => i.type).filter(Boolean) as string[])
@@ -211,9 +231,9 @@ export default function Catalog() {
               <p className="truncate text-xs text-gray-500">
                 {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
               </p>
-              {item.bundle_items && item.bundle_items.length > 0 && (
+              {(bundleMap.get(item.id) ?? []).length > 0 && (
                 <p className="truncate text-xs text-violet-500 mt-0.5">
-                  {item.bundle_items.map((b) => (b.qty > 1 ? `${b.component.name} ×${b.qty}` : b.component.name)).join(' + ')}
+                  {(bundleMap.get(item.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
                 </p>
               )}
             </div>
