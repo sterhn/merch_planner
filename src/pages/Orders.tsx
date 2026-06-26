@@ -12,9 +12,9 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 type Filter = 'all' | 'unpaid' | 'to_send' | 'done'
 
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'unpaid', label: 'Unpaid' },
   { key: 'to_send', label: 'To send' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
 
@@ -27,7 +27,7 @@ export default function Orders() {
   const insert = useInsert<Order>('orders')
 
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = useState<Filter>('to_send')
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
 
