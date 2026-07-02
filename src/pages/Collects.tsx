@@ -10,7 +10,7 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 const EMPTY = { name: '', vendor: '', qty: '', print_cost: '', commission: '', delivery_cost: '', deadline: '', paid: false }
 
 export default function Collects() {
-  const { data: collects, isLoading } = useList<Collect>('collects', { orderBy: 'deadline', ascending: false })
+  const { data: collects, isLoading, isError, refetch } = useList<Collect>('collects', { orderBy: 'deadline', ascending: false })
   const insert = useInsert<Collect>('collects', ['expense_feed'])
   const update = useUpdate<Collect>('collects', ['expense_feed'])
   const remove = useDelete('collects', ['expense_feed'])
@@ -62,7 +62,8 @@ export default function Collects() {
       </div>
 
       {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && (collects ?? []).length === 0 && <EmptyState message="No production runs yet." />}
+      {isError && <EmptyState message="Failed to load collects." onRetry={() => refetch()} />}
+      {!isLoading && !isError && (collects ?? []).length === 0 && <EmptyState message="No production runs yet." />}
 
       <div className="space-y-2">
         {(collects ?? []).map((c) => {

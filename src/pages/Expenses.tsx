@@ -16,7 +16,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function Expenses() {
-  const { data: feed, isLoading } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
+  const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
   const remove = useDelete('expenses', ['expense_feed'])
 
@@ -61,7 +61,8 @@ export default function Expenses() {
       </div>
 
       {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && (feed ?? []).length === 0 && <EmptyState message="No expenses yet." />}
+      {isError && <EmptyState message="Failed to load expenses." onRetry={() => refetch()} />}
+      {!isLoading && !isError && (feed ?? []).length === 0 && <EmptyState message="No expenses yet." />}
 
       {byMonth.map(([month, rows]) => (
         <section key={month} className="mb-5">

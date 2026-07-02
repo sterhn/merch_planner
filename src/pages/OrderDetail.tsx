@@ -183,7 +183,8 @@ export default function OrderDetail() {
   })
 
   const { data: catalog } = useList<Item>('items', { orderBy: 'name' })
-  const updateOrder = useUpdate<Order>('orders')
+  // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
+  const updateOrder = useUpdate<Order>('orders', ['items'])
   const deleteOrder = useDelete('orders')
   const insertLine = useInsert<OrderItem>('order_items')
   const deleteLine = useDelete('order_items')
@@ -210,7 +211,16 @@ export default function OrderDetail() {
   }
 
   function toggle(flag: 'paid' | 'sent' | 'delivered') {
-    updateOrder.mutate({ id: id!, values: { [flag]: !order![flag] } }, { onSuccess: invalidateDetail })
+    // Optimistic: flip the badge immediately, roll back if the save fails.
+    const previous = qc.getQueryData<Order>(['orders', id])
+    qc.setQueryData<Order>(['orders', id], (o) => (o ? { ...o, [flag]: !o[flag] } : o))
+    updateOrder.mutate(
+      { id: id!, values: { [flag]: !order![flag] } },
+      {
+        onSuccess: invalidateDetail,
+        onError: () => qc.setQueryData(['orders', id], previous),
+      },
+    )
   }
 
   function addLine(e: React.FormEvent) {

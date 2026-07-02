@@ -19,7 +19,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 export default function Orders() {
-  const { data: orders, isLoading } = useList<OrderWithPhotos>('orders', {
+  const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
     orderBy: 'created_at',
     ascending: false,
     select: '*, order_items(item:item_id(image_url))',
@@ -81,7 +81,8 @@ export default function Orders() {
       </div>
 
       {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState message="No orders found." />}
+      {isError && <EmptyState message="Failed to load orders." onRetry={() => refetch()} />}
+      {!isLoading && !isError && filtered.length === 0 && <EmptyState message="No orders found." />}
 
       <div className="space-y-2">
         {filtered.map((o) => {
