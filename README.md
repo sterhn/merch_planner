@@ -21,6 +21,9 @@ A small web app for tracking a merch shop: **orders, catalog, collects (producti
 1. In your Supabase project, open **SQL Editor** (left sidebar).
 2. Open the file [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) from this repo, copy **all** of it, paste into the editor, press **Run**.
 3. You should see "Success. No rows returned".
+4. Repeat for [`supabase/migrations/002_stock_sync.sql`](supabase/migrations/002_stock_sync.sql) (auto stock decrement — see below).
+
+> **Already set up earlier?** Only step 4 is new — run `002_stock_sync.sql` once in the SQL Editor.
 
 ### 3. Create your login & lock the door
 
@@ -75,6 +78,10 @@ Open **https://sterhn.github.io/merch_planner/** in the browser, log in, then us
 | **Collects** | Production runs: qty, costs, deadline, paid; total & per-unit cost auto-computed |
 | **Shelf** | Consignment positions: sent / sold / remaining, income, "Log rent" button |
 | **Expenses** | Manual expense log + paid collects shown automatically ("from collects") |
+
+Marking an order **sent** automatically decreases catalog stock for its items (and restores it if you un-mark sent). Items added to an order *after* it was already marked sent don't adjust stock.
+
+The app is a PWA: after the first visit it loads instantly and shows your latest cached data even offline (changes still need a connection).
 
 ## Development
 

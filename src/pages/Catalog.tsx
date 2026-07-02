@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { uploadItemImage } from '../lib/images'
+import { deleteItemImage, uploadItemImage } from '../lib/images'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
@@ -10,7 +10,7 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
 export default function Catalog() {
-  const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
+  const { data: items, isLoading, isError, refetch } = useList<Item>('items', { orderBy: 'type' })
   const insert = useInsert<Item>('items')
   const update = useUpdate<Item>('items')
   const remove = useDelete('items')
@@ -20,6 +20,13 @@ export default function Catalog() {
   const [form, setForm] = useState(EMPTY)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  const photoPreview = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview)
+    }
+  }, [photoPreview])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -76,8 +83,20 @@ export default function Catalog() {
       stock_qty: form.stock_qty === '' ? null : Number(form.stock_qty),
       image_url: imageUrl,
     }
-    if (editing === 'new') insert.mutate(values, { onSuccess: () => setEditing(null) })
-    else if (editing) update.mutate({ id: editing.id, values }, { onSuccess: () => setEditing(null) })
+    if (editing === 'new') {
+      insert.mutate(values, { onSuccess: () => setEditing(null) })
+    } else if (editing) {
+      const oldUrl = editing.image_url
+      update.mutate(
+        { id: editing.id, values },
+        {
+          onSuccess: () => {
+            if (oldUrl && oldUrl !== imageUrl) void deleteItemImage(oldUrl)
+            setEditing(null)
+          },
+        },
+      )
+    }
   }
 
   return (
@@ -99,7 +118,8 @@ export default function Catalog() {
       />
 
       {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState message="No items yet." />}
+      {isError && <EmptyState message="Failed to load catalog." onRetry={() => refetch()} />}
+      {!isLoading && !isError && filtered.length === 0 && <EmptyState message="No items yet." />}
 
       <div className="space-y-2">
         {filtered.map((item) => (
@@ -145,7 +165,7 @@ export default function Catalog() {
             <div className="flex items-center gap-3">
               {(photoFile || form.image_url) && (
                 <img
-                  src={photoFile ? URL.createObjectURL(photoFile) : form.image_url}
+                  src={photoPreview ?? form.image_url}
                   alt=""
                   className="size-14 rounded-lg object-cover"
                 />
@@ -189,7 +209,13 @@ export default function Catalog() {
             <button
               type="button"
               onClick={() => {
-                if (confirm('Delete this item?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
+                if (confirm('Delete this item?'))
+                  remove.mutate(editing.id, {
+                    onSuccess: () => {
+                      void deleteItemImage(editing.image_url)
+                      setEditing(null)
+                    },
+                  })
               }}
               className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
             >

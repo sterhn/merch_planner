@@ -8,7 +8,7 @@ interface ListOptions {
 
 export function useList<T>(table: string, opts: ListOptions = {}) {
   return useQuery({
-    queryKey: [table],
+    queryKey: [table, opts.orderBy ?? null, opts.ascending ?? true],
     queryFn: async (): Promise<T[]> => {
       let query = supabase.from(table).select('*')
       if (opts.orderBy) query = query.order(opts.orderBy, { ascending: opts.ascending ?? true })
