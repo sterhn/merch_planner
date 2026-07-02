@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage } from '../lib/images'
@@ -9,13 +9,68 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${active ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 shadow-sm hover:bg-violet-50'}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ComboSelect({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder?: string
+}) {
+  const [adding, setAdding] = useState(!options.includes(value) && value !== '')
+  const selectVal = adding ? '__new__' : value
+
+  return (
+    <div className="space-y-2">
+      <select
+        className={inputClass}
+        value={selectVal}
+        onChange={(e) => {
+          if (e.target.value === '__new__') { setAdding(true); onChange('') }
+          else { setAdding(false); onChange(e.target.value) }
+        }}
+      >
+        <option value="">—</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        <option value="__new__">＋ Add new…</option>
+      </select>
+      {adding && (
+        <input
+          autoFocus
+          className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? 'Type new value…'}
+        />
+      )}
+    </div>
+  )
+}
+
+interface RawBundleItem { bundle_id: string; component_id: string; qty: number }
+
 export default function Catalog() {
   const { data: items, isLoading, isError, refetch } = useList<Item>('items', { orderBy: 'type' })
+  const { data: rawBundles } = useList<RawBundleItem>('bundle_items', {
+    select: 'bundle_id, component_id, qty',
+  })
   const insert = useInsert<Item>('items')
   const update = useUpdate<Item>('items')
   const remove = useDelete('items')
 
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [fandomFilter, setFandomFilter] = useState<string | null>(null)
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -28,17 +83,57 @@ export default function Catalog() {
     }
   }, [photoPreview])
 
+  const itemById = useMemo(() => {
+    const m = new Map<string, Item>()
+    for (const i of items ?? []) m.set(i.id, i)
+    return m
+  }, [items])
+
+  const bundleMap = useMemo(() => {
+    const m = new Map<string, { name: string; qty: number }[]>()
+    for (const b of rawBundles ?? []) {
+      const name = itemById.get(b.component_id)?.name
+      if (!name) continue
+      const arr = m.get(b.bundle_id) ?? []
+      arr.push({ name, qty: b.qty })
+      m.set(b.bundle_id, arr)
+    }
+    return m
+  }, [rawBundles, itemById])
+
+  const types = useMemo(() => {
+    const s = new Set((items ?? []).map((i) => i.type).filter(Boolean) as string[])
+    return Array.from(s).sort()
+  }, [items])
+
+  const fandoms = useMemo(() => {
+    const s = new Set((items ?? []).map((i) => i.fandom).filter(Boolean) as string[])
+    return Array.from(s).sort()
+  }, [items])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return items ?? []
-    return (items ?? []).filter(
-      (i) =>
+    return (items ?? []).filter((i) => {
+      if (typeFilter && i.type !== typeFilter) return false
+      if (fandomFilter && i.fandom !== fandomFilter) return false
+      if (!q) return true
+      return (
         i.name.toLowerCase().includes(q) ||
         (i.type ?? '').toLowerCase().includes(q) ||
         (i.fandom ?? '').toLowerCase().includes(q) ||
-        (i.sku ?? '').toLowerCase().includes(q),
-    )
-  }, [items, search])
+        (i.sku ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [items, search, typeFilter, fandomFilter])
+
+  function autoSku(fandom: string) {
+    const prefix = fandom.replace(/[[\]]/g, '').toUpperCase()
+    if (!prefix) return ''
+    const count = (items ?? []).filter(
+      (i) => (i.fandom ?? '').replace(/[[\]]/g, '').toUpperCase() === prefix,
+    ).length
+    return `${prefix}-${String(count + 1).padStart(2, '0')}`
+  }
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
@@ -114,8 +209,26 @@ export default function Catalog() {
         placeholder="Search…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={`${inputClass} mb-4`}
+        className={`${inputClass} mb-3`}
       />
+
+      {types.length > 0 && (
+        <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+          <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>All types</FilterChip>
+          {types.map((t) => (
+            <FilterChip key={t} active={typeFilter === t} onClick={() => setTypeFilter(typeFilter === t ? null : t)}>{t}</FilterChip>
+          ))}
+        </div>
+      )}
+
+      {fandoms.length > 0 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          <FilterChip active={fandomFilter === null} onClick={() => setFandomFilter(null)}>All fandoms</FilterChip>
+          {fandoms.map((f) => (
+            <FilterChip key={f} active={fandomFilter === f} onClick={() => setFandomFilter(fandomFilter === f ? null : f)}>{f}</FilterChip>
+          ))}
+        </div>
+      )}
 
       {isLoading && <EmptyState message="Loading…" />}
       {isError && <EmptyState message="Failed to load catalog." onRetry={() => refetch()} />}
@@ -128,14 +241,21 @@ export default function Catalog() {
             onClick={() => openEditor(item)}
             className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
           >
-            {item.image_url && (
-              <img src={item.image_url} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+            {item.image_url ? (
+              <img src={item.image_url} alt="" className="size-16 shrink-0 rounded-lg object-cover" loading="lazy" />
+            ) : (
+              <div className="size-16 shrink-0 rounded-lg bg-gray-100" />
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{item.name}</p>
               <p className="truncate text-xs text-gray-500">
                 {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
               </p>
+              {(bundleMap.get(item.id) ?? []).length > 0 && (
+                <p className="truncate text-xs text-violet-500 mt-0.5">
+                  {(bundleMap.get(item.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
+                </p>
+              )}
             </div>
             <div className="shrink-0 text-right">
               <p className="text-sm font-semibold">{formatRub(item.sale_price)}</p>
@@ -149,10 +269,23 @@ export default function Catalog() {
         <form onSubmit={save}>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
-              <input className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="брелок / значок…" />
+              <ComboSelect
+                value={form.type}
+                onChange={(v) => setForm({ ...form, type: v })}
+                options={types}
+                placeholder="брелок / значок…"
+              />
             </Field>
             <Field label="Fandom">
-              <input className={inputClass} value={form.fandom} onChange={(e) => setForm({ ...form, fandom: e.target.value })} placeholder="kdj / tgcf…" />
+              <ComboSelect
+                value={form.fandom}
+                onChange={(v) => {
+                  const sku = form.sku || autoSku(v)
+                  setForm({ ...form, fandom: v, sku })
+                }}
+                options={fandoms}
+                placeholder="kdj / tgcf…"
+              />
             </Field>
           </div>
           <Field label="Name">

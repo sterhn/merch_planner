@@ -12,10 +12,15 @@ export interface Item {
   created_at: string
 }
 
+export interface OrderWithPhotos extends Order {
+  order_items: { item: { image_url: string | null } | null }[]
+}
+
 export const DELIVERY_METHODS = [
   'почта',
   'сдэк',
   'яндекс',
+  'озон',
   'самовывоз мск',
   'самовывоз спб',
 ] as const

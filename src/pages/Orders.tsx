@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { Order } from '../lib/types'
+import type { OrderWithPhotos } from '../lib/types'
 import { useInsert, useList } from '../hooks/useTable'
+import type { Order } from '../lib/types'
 import { formatRub } from '../lib/format'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
@@ -11,18 +12,22 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 type Filter = 'all' | 'unpaid' | 'to_send' | 'done'
 
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'unpaid', label: 'Unpaid' },
   { key: 'to_send', label: 'To send' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
 
 export default function Orders() {
-  const { data: orders, isLoading, isError, refetch } = useList<Order>('orders', { orderBy: 'created_at', ascending: false })
+  const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
+    orderBy: 'created_at',
+    ascending: false,
+    select: '*, order_items(item:item_id(image_url))',
+  })
   const insert = useInsert<Order>('orders')
 
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = useState<Filter>('to_send')
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
 
@@ -80,24 +85,39 @@ export default function Orders() {
       {!isLoading && !isError && filtered.length === 0 && <EmptyState message="No orders found." />}
 
       <div className="space-y-2">
-        {filtered.map((o) => (
-          <Link
-            key={o.id}
-            to={`/orders/${o.id}`}
-            className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm hover:bg-violet-50"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{o.telegram || o.customer_email || 'no contact'}</p>
-              <p className="truncate text-xs text-gray-500">{o.delivery_method ?? 'no delivery method'}</p>
-              <div className="mt-1 flex gap-1">
-                <StatusBadge on={o.paid} label="paid" />
-                <StatusBadge on={o.sent} label="sent" />
-                <StatusBadge on={o.delivered} label="delivered" />
+        {filtered.map((o) => {
+          const photos = [...new Set(
+            (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
+          )].slice(0, 6)
+          return (
+            <Link
+              key={o.id}
+              to={`/orders/${o.id}`}
+              className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm hover:bg-violet-50"
+            >
+              {photos.length > 0 && (
+                <div className="flex shrink-0 flex-col gap-0.5">
+                  {photos.slice(0, 3).map((url, i) => (
+                    <img key={i} src={url} alt="" className="size-7 rounded object-cover" loading="lazy" />
+                  ))}
+                  {photos.length > 3 && (
+                    <span className="text-center text-xs text-gray-400">+{photos.length - 3}</span>
+                  )}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{o.telegram || o.customer_email || 'no contact'}</p>
+                <p className="truncate text-xs text-gray-500">{o.delivery_method ?? 'no delivery method'}</p>
+                <div className="mt-1 flex gap-1">
+                  <StatusBadge on={o.paid} label="paid" />
+                  <StatusBadge on={o.sent} label="sent" />
+                  <StatusBadge on={o.delivered} label="delivered" />
+                </div>
               </div>
-            </div>
-            <span className="shrink-0 text-sm font-semibold">{formatRub(o.total_price)}</span>
-          </Link>
-        ))}
+              <span className="shrink-0 text-sm font-semibold">{formatRub(o.total_price)}</span>
+            </Link>
+          )
+        })}
       </div>
 
       <Modal title="New order" open={adding} onClose={() => setAdding(false)}>

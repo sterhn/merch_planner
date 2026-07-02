@@ -10,6 +10,86 @@ import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
+function CatalogPicker({ catalog, value, onSelect }: {
+  catalog: Item[]
+  value: string
+  onSelect: (id: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [fandomFilter, setFandomFilter] = useState<string | null>(null)
+
+  const fandoms = useMemo(() => {
+    const s = new Set(catalog.map((i) => i.fandom).filter(Boolean) as string[])
+    return Array.from(s).sort()
+  }, [catalog])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return catalog.filter((i) => {
+      if (fandomFilter && i.fandom !== fandomFilter) return false
+      if (!q) return true
+      return (
+        i.name.toLowerCase().includes(q) ||
+        (i.fandom ?? '').toLowerCase().includes(q) ||
+        (i.type ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [catalog, search, fandomFilter])
+
+  return (
+    <div>
+      <input
+        placeholder="Search…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`${inputClass} mb-2`}
+      />
+      {fandoms.length > 0 && (
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+          {[null, ...fandoms].map((f) => (
+            <button
+              key={f ?? '__all__'}
+              type="button"
+              onClick={() => setFandomFilter(f)}
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${fandomFilter === f ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              {f ?? 'All'}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200">
+        <button
+          type="button"
+          onClick={() => onSelect('')}
+          className={`flex w-full items-center px-3 py-2.5 text-left text-sm italic ${value === '' ? 'bg-violet-50 font-medium text-violet-700' : 'text-gray-400 hover:bg-gray-50'}`}
+        >
+          — custom item —
+        </button>
+        {filtered.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className={`flex w-full items-center gap-2.5 border-t border-gray-100 px-3 py-2 text-left ${value === item.id ? 'bg-violet-50' : 'hover:bg-gray-50'}`}
+          >
+            {item.image_url ? (
+              <img src={item.image_url} alt="" className="size-9 shrink-0 rounded-lg object-cover" loading="lazy" />
+            ) : (
+              <div className="size-9 shrink-0 rounded-lg bg-gray-100" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-sm">{item.name}</span>
+            <span className="shrink-0 text-sm font-semibold text-gray-700">{formatRub(item.sale_price)}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <p className="py-4 text-center text-sm text-gray-400">No items found</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function HeaderForm({
   order,
   pending,
@@ -194,7 +274,11 @@ export default function OrderDetail() {
             const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
             return (
               <li key={l.id} className="flex items-center justify-between gap-2 py-2">
-                <div className="min-w-0">
+                {catalogItem?.image_url
+                  ? <img src={catalogItem.image_url} alt="" className="size-8 shrink-0 rounded object-cover" loading="lazy" />
+                  : <div className="size-8 shrink-0 rounded bg-gray-100" />
+                }
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm">
                     {catalogItem?.name ?? l.name_text ?? '—'}
                     {l.qty > 1 && <span className="text-gray-500"> ×{l.qty}</span>}
@@ -245,25 +329,18 @@ export default function OrderDetail() {
       <Modal title="Add item" open={addingLine} onClose={() => setAddingLine(false)}>
         <form onSubmit={addLine}>
           <Field label="From catalog">
-            <select
-              className={inputClass}
+            <CatalogPicker
+              catalog={catalog ?? []}
               value={lineForm.item_id}
-              onChange={(e) => {
-                const picked = itemNames.get(e.target.value)
+              onSelect={(id) => {
+                const picked = itemNames.get(id)
                 setLineForm({
                   ...lineForm,
-                  item_id: e.target.value,
+                  item_id: id,
                   unit_price: picked?.sale_price?.toString() ?? lineForm.unit_price,
                 })
               }}
-            >
-              <option value="">— custom item —</option>
-              {(catalog ?? []).map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name} ({formatRub(i.sale_price)})
-                </option>
-              ))}
-            </select>
+            />
           </Field>
           {!lineForm.item_id && (
             <Field label="Custom name">
