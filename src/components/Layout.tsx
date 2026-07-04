@@ -14,8 +14,8 @@ export default function Layout() {
   return (
     <div className="min-h-dvh md:flex">
       {/* Sidebar on desktop */}
-      <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-gray-200 md:bg-white">
-        <div className="px-5 py-5 text-lg font-bold text-violet-700">Merch Planner</div>
+      <aside className="hidden md:flex md:w-56 md:flex-col md:bg-gradient-to-b md:from-violet-950 md:to-violet-900">
+        <div className="px-5 py-5 text-lg font-bold tracking-tight text-violet-200">Merch Planner</div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
           {NAV.map((n) => (
             <NavLink
@@ -23,8 +23,8 @@ export default function Layout() {
               to={n.to}
               end={n.to === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${
-                  isActive ? 'bg-violet-100 text-violet-800' : 'text-gray-600 hover:bg-gray-100'
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
+                  isActive ? 'bg-white/15 font-semibold text-white' : 'text-violet-200 hover:bg-white/10'
                 }`
               }
             >
@@ -35,7 +35,7 @@ export default function Layout() {
         </nav>
         <button
           onClick={() => supabase.auth.signOut()}
-          className="m-3 rounded-lg px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-100"
+          className="m-3 rounded-lg px-3 py-2 text-left text-sm text-violet-300 transition-colors duration-150 hover:bg-white/10"
         >
           Sign out
         </button>
@@ -60,8 +60,14 @@ export default function Layout() {
               }`
             }
           >
-            <span className="text-lg leading-none">{n.icon}</span>
-            {n.label}
+            {({ isActive }) => (
+              <>
+                <span className={`text-lg leading-none rounded-full px-1.5 py-0.5 transition-colors duration-150 ${isActive ? 'bg-violet-100' : ''}`}>
+                  {n.icon}
+                </span>
+                {n.label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
