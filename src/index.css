@@ -5,7 +5,9 @@ html {
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  background-color: #f2f0f7;
+  color: #1a1535;
+  @apply antialiased;
 }
 
 @media print {

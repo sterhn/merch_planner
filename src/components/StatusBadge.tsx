@@ -11,10 +11,15 @@ export default function StatusBadge({
   if (onClick) {
     return (
       <button onClick={onClick} className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>
-        {on ? '✓ ' : ''}
+        {on ? <span className="mr-1 text-green-600">●</span> : null}
         {label}
       </button>
     )
   }
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>{label}</span>
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+      {on ? <span className="mr-1 text-green-600">●</span> : null}
+      {label}
+    </span>
+  )
 }
