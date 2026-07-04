@@ -41,7 +41,7 @@ function HeaderForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-xl bg-white p-4 shadow-sm">
+    <form onSubmit={submit} className="rounded-xl bg-white p-4 shadow-sm print:hidden">
       <h2 className="mb-3 text-sm font-semibold text-gray-600">Details</h2>
       <div className="grid gap-x-3 md:grid-cols-2">
         <Field label="Telegram">
@@ -110,12 +110,29 @@ export default function OrderDetail() {
 
   const [addingLine, setAddingLine] = useState(false)
   const [lineForm, setLineForm] = useState({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+  const [lineSearch, setLineSearch] = useState('')
+  const [lineTypeFilter, setLineTypeFilter] = useState('')
 
   const itemNames = useMemo(() => {
     const map = new Map<string, Item>()
     for (const i of catalog ?? []) map.set(i.id, i)
     return map
   }, [catalog])
+
+  const catalogTypes = useMemo(() => {
+    const types = new Set<string>()
+    for (const i of catalog ?? []) if (i.type) types.add(i.type)
+    return [...types].sort()
+  }, [catalog])
+
+  const filteredCatalog = useMemo(() => {
+    const q = lineSearch.trim().toLowerCase()
+    return (catalog ?? []).filter((i) => {
+      if (lineTypeFilter && i.type !== lineTypeFilter) return false
+      if (q && !`${i.name} ${i.fandom ?? ''}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [catalog, lineSearch, lineTypeFilter])
 
   const linesTotal = useMemo(
     () => (lines ?? []).reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0),
@@ -133,6 +150,13 @@ export default function OrderDetail() {
     updateOrder.mutate({ id: id!, values: { [flag]: !order![flag] } }, { onSuccess: invalidateDetail })
   }
 
+  function closeAddLine() {
+    setAddingLine(false)
+    setLineForm({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+    setLineSearch('')
+    setLineTypeFilter('')
+  }
+
   function addLine(e: React.FormEvent) {
     e.preventDefault()
     const picked = lineForm.item_id ? itemNames.get(lineForm.item_id) : undefined
@@ -147,25 +171,121 @@ export default function OrderDetail() {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ['order_items', id] })
-          setAddingLine(false)
-          setLineForm({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+          closeAddLine()
         },
       },
     )
   }
 
+  function printOrder() {
+    const customerName = order!.telegram || order!.customer_email || 'Order'
+    const date = new Date(order!.created_at).toLocaleDateString('ru-RU')
+
+    const statusParts = [
+      order!.paid ? '✓ Paid' : '✗ Not paid',
+      order!.sent ? '✓ Sent' : '✗ Not sent',
+      order!.delivered ? '✓ Delivered' : '✗ Not delivered',
+    ]
+
+    const itemRows = (lines ?? [])
+      .map((l) => {
+        const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
+        const name = catalogItem?.name ?? l.name_text ?? '—'
+        const price = l.unit_price ?? 0
+        const subtotal = price * l.qty
+        return `<tr>
+          <td>${name}</td>
+          <td style="text-align:center">${l.qty}</td>
+          <td style="text-align:right">${formatRub(price)}</td>
+          <td style="text-align:right">${formatRub(subtotal)}</td>
+        </tr>`
+      })
+      .join('')
+
+    const extraInfo = [
+      order!.delivery_method ? `<p><strong>Delivery:</strong> ${order!.delivery_method}</p>` : '',
+      order!.delivery_details ? `<p><strong>Address:</strong> ${order!.delivery_details}</p>` : '',
+      order!.customer_email ? `<p><strong>Email:</strong> ${order!.customer_email}</p>` : '',
+      order!.comment ? `<p><strong>Comment:</strong> ${order!.comment}</p>` : '',
+    ]
+      .filter(Boolean)
+      .join('')
+
+    const totalLine =
+      order!.total_price != null
+        ? `<p style="text-align:right;font-weight:bold;font-size:15px">Order total: ${formatRub(order!.total_price)}</p>`
+        : ''
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Order – ${customerName}</title>
+  <style>
+    body { font-family: sans-serif; font-size: 13px; padding: 28px 32px; color: #111; max-width: 700px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 2px; }
+    .date { color: #666; margin-bottom: 12px; font-size: 12px; }
+    .status { display: flex; gap: 20px; margin-bottom: 16px; font-size: 12px; color: #444; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { text-align: left; border-bottom: 2px solid #333; padding: 5px 6px 5px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    th:not(:first-child) { text-align: right; }
+    td { padding: 5px 6px 5px 0; border-bottom: 1px solid #eee; vertical-align: top; }
+    .items-total { text-align: right; font-size: 12px; color: #555; margin-bottom: 4px; }
+    .order-total { text-align: right; font-weight: bold; font-size: 15px; margin-bottom: 16px; }
+    .info { margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px; }
+    .info p { margin: 3px 0; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>${customerName}</h1>
+  <div class="date">${date}</div>
+  <div class="status">${statusParts.join('<span style="color:#ccc">|</span>')}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:right">Price</th>
+        <th style="text-align:right">Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+  <div class="items-total">Items total: ${formatRub(linesTotal)}</div>
+  ${totalLine}
+  ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}
+</body>
+</html>`
+
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      win.print()
+    }
+  }
+
   return (
     <div>
-      <button onClick={() => navigate('/orders')} className="mb-3 text-sm text-violet-700">
+      <button onClick={() => navigate('/orders')} className="mb-3 text-sm text-violet-700 print:hidden">
         ← Back to orders
       </button>
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="min-w-0 truncate text-xl font-bold">{order.telegram || order.customer_email || 'Order'}</h1>
-        <span className="shrink-0 text-lg font-bold">{formatRub(order.total_price)}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={printOrder}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 print:hidden"
+          >
+            Print / PDF
+          </button>
+          <span className="text-lg font-bold">{formatRub(order.total_price)}</span>
+        </div>
       </div>
 
-      <div className="mb-5 flex gap-2">
+      <div className="mb-5 flex gap-2 print:hidden">
         <StatusBadge on={order.paid} label="paid" onClick={() => toggle('paid')} />
         <StatusBadge on={order.sent} label="sent" onClick={() => toggle('sent')} />
         <StatusBadge on={order.delivered} label="delivered" onClick={() => toggle('delivered')} />
@@ -174,7 +294,7 @@ export default function OrderDetail() {
       <section className="mb-6 rounded-xl bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-600">Items</h2>
-          <button onClick={() => setAddingLine(true)} className="text-sm font-medium text-violet-700">
+          <button onClick={() => setAddingLine(true)} className="text-sm font-medium text-violet-700 print:hidden">
             + Add item
           </button>
         </div>
@@ -200,7 +320,7 @@ export default function OrderDetail() {
                           onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
                         })
                     }}
-                    className="rounded p-1 text-gray-400 hover:text-red-600"
+                    className="rounded p-1 text-gray-400 hover:text-red-600 print:hidden"
                     aria-label="Remove"
                   >
                     ✕
@@ -227,13 +347,43 @@ export default function OrderDetail() {
           if (confirm('Delete this whole order?'))
             deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') })
         }}
-        className="mt-4 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+        className="mt-4 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 print:hidden"
       >
         Delete order
       </button>
 
-      <Modal title="Add item" open={addingLine} onClose={() => setAddingLine(false)}>
+      <Modal title="Add item" open={addingLine} onClose={closeAddLine}>
         <form onSubmit={addLine}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Search by name / fandom">
+              <input
+                className={inputClass}
+                placeholder="e.g. kdj, acnh…"
+                value={lineSearch}
+                onChange={(e) => {
+                  setLineSearch(e.target.value)
+                  setLineForm((f) => ({ ...f, item_id: '' }))
+                }}
+              />
+            </Field>
+            <Field label="Filter by type">
+              <select
+                className={inputClass}
+                value={lineTypeFilter}
+                onChange={(e) => {
+                  setLineTypeFilter(e.target.value)
+                  setLineForm((f) => ({ ...f, item_id: '' }))
+                }}
+              >
+                <option value="">All types</option>
+                {catalogTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
           <Field label="From catalog">
             <select
               className={inputClass}
@@ -248,9 +398,11 @@ export default function OrderDetail() {
               }}
             >
               <option value="">— custom item —</option>
-              {(catalog ?? []).map((i) => (
+              {filteredCatalog.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.name} ({formatRub(i.sale_price)})
+                  {i.name}
+                  {i.fandom ? ` · ${i.fandom}` : ''}
+                  {i.type ? ` [${i.type}]` : ''} ({formatRub(i.sale_price)})
                 </option>
               ))}
             </select>
