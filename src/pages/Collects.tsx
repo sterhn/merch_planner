@@ -1,11 +1,13 @@
 import { useState } from 'react'
+import { Plus, Printer, AlertTriangle, CalendarClock, Loader2 } from 'lucide-react'
 import type { Collect } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 const EMPTY = { name: '', vendor: '', qty: '', print_cost: '', commission: '', delivery_cost: '', deadline: '', paid: false }
 
@@ -55,14 +57,21 @@ export default function Collects() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Collects</h1>
-        <button onClick={() => openEditor('new')} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
-          + Add collect
+        <h1 className="font-display text-2xl">Collects</h1>
+        <button
+          onClick={() => {
+            haptic()
+            openEditor('new')
+          }}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+        >
+          <Plus size={16} strokeWidth={3} />
+          Add collect
         </button>
       </div>
 
-      {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && (collects ?? []).length === 0 && <EmptyState message="No production runs yet." />}
+      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
+      {!isLoading && (collects ?? []).length === 0 && <EmptyState icon={Printer} message="No production runs yet." />}
 
       <div className="space-y-2">
         {(collects ?? []).map((c) => {
@@ -71,21 +80,26 @@ export default function Collects() {
             <button
               key={c.id}
               onClick={() => openEditor(c)}
-              className={`flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50 ${
-                overdue ? 'ring-1 ring-red-300' : ''
+              className={`tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10 ${
+                overdue ? 'ring-2 ring-bad/50' : ''
               }`}
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{c.name ?? '—'}</p>
-                <p className="text-xs text-gray-500">
+                <p className="truncate text-sm font-bold">{c.name ?? '—'}</p>
+                <p className="text-xs text-ink-muted">
                   {c.vendor ?? '—'} · {c.qty ?? '?'} pcs · {formatRub(c.cost_per_unit)}/pc
                 </p>
-                <p className={`text-xs ${overdue ? 'font-medium text-red-600' : 'text-gray-500'}`}>
-                  deadline {formatDate(c.deadline)}
+                <p
+                  className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
+                    overdue ? 'bg-bad/10 text-bad' : 'bg-surface-2 text-ink-muted'
+                  }`}
+                >
+                  {overdue ? <AlertTriangle size={12} /> : <CalendarClock size={12} />}
+                  {formatDate(c.deadline)}
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-sm font-semibold">{formatRub(c.total_cost)}</p>
+                <p className="mb-1 font-display text-sm">{formatRub(c.total_cost)}</p>
                 <StatusBadge on={c.paid} label="paid" />
               </div>
             </button>
@@ -118,23 +132,29 @@ export default function Collects() {
           <Field label="Deadline">
             <input className={inputClass} type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
           </Field>
-          <label className="mb-4 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.paid} onChange={(e) => setForm({ ...form, paid: e.target.checked })} />
+          <label className="mb-4 flex min-h-11 items-center gap-2.5 text-sm font-semibold">
+            <input
+              type="checkbox"
+              className="size-5 accent-violet-600"
+              checked={form.paid}
+              onChange={(e) => setForm({ ...form, paid: e.target.checked })}
+            />
             Paid
           </label>
           <PrimaryButton type="submit" disabled={insert.isPending || update.isPending}>
             Save
           </PrimaryButton>
           {editing !== 'new' && editing && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Delete this collect?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
-              }}
-              className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              Delete
-            </button>
+            <div className="mt-2">
+              <DangerButton
+                type="button"
+                onClick={() => {
+                  if (confirm('Delete this collect?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
+                }}
+              >
+                Delete
+              </DangerButton>
+            </div>
           )}
         </form>
       </Modal>

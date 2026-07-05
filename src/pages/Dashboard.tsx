@@ -1,15 +1,46 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import {
+  TrendingUp,
+  Store,
+  Wallet,
+  Sparkles,
+  ChevronRight,
+  CalendarClock,
+  type LucideIcon,
+} from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
+import AnimatedNumber from '../components/AnimatedNumber'
 
-function Card({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'red' }) {
-  const color = tone === 'green' ? 'text-green-700' : tone === 'red' ? 'text-red-600' : 'text-gray-900'
+function StatTile({
+  label,
+  value,
+  gradient,
+  icon: Icon,
+  index,
+}: {
+  label: string
+  value: number
+  gradient: string
+  icon: LucideIcon
+  index: number
+}) {
   return (
-    <div className="rounded-xl bg-white p-4 shadow-sm">
-      <p className={`text-lg font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
+    <div
+      className={`animate-pop rounded-card bg-gradient-to-br p-4 text-white shadow-card ${gradient}`}
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
+      <div className="mb-2 flex items-start justify-between">
+        <p className="font-display text-xl leading-tight">
+          <AnimatedNumber value={value} format={formatRub} />
+        </p>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/20">
+          <Icon size={15} />
+        </span>
+      </div>
+      <p className="text-xs font-semibold text-white/80">{label}</p>
     </div>
   )
 }
@@ -44,37 +75,86 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Dashboard</h1>
+      <h1 className="mb-4 font-display text-2xl">Dashboard</h1>
 
       <div className="mb-5 grid grid-cols-2 gap-3">
-        <Card label="Order revenue (paid)" value={formatRub(stats.orderRevenue)} tone="green" />
-        <Card label="Shelf income" value={formatRub(stats.shelfIncome)} tone="green" />
-        <Card label="Expenses" value={formatRub(stats.totalExpenses)} tone="red" />
-        <Card label="Net" value={formatRub(stats.net)} tone={stats.net >= 0 ? 'green' : 'red'} />
+        <StatTile
+          index={0}
+          label="Order revenue (paid)"
+          value={stats.orderRevenue}
+          gradient="from-emerald-500 to-teal-500"
+          icon={TrendingUp}
+        />
+        <StatTile
+          index={1}
+          label="Shelf income"
+          value={stats.shelfIncome}
+          gradient="from-sky-500 to-indigo-500"
+          icon={Store}
+        />
+        <StatTile
+          index={2}
+          label="Expenses"
+          value={stats.totalExpenses}
+          gradient="from-rose-500 to-orange-400"
+          icon={Wallet}
+        />
+        <StatTile
+          index={3}
+          label="Net"
+          value={stats.net}
+          gradient={stats.net >= 0 ? 'from-violet-600 to-fuchsia-500' : 'from-rose-500 to-orange-400'}
+          icon={Sparkles}
+        />
       </div>
 
       <div className="mb-5 grid grid-cols-2 gap-3">
-        <Link to="/orders" className="rounded-xl bg-white p-4 shadow-sm hover:bg-violet-50">
-          <p className="text-lg font-bold">{stats.unpaid}</p>
-          <p className="text-xs text-gray-500">unpaid orders</p>
+        <Link
+          to="/orders"
+          className="tap animate-pop rounded-card bg-surface p-4 shadow-card"
+          style={{ animationDelay: '240ms' }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="font-display text-2xl text-brand">
+              <AnimatedNumber value={stats.unpaid} />
+            </p>
+            <ChevronRight size={18} className="text-ink-faint" />
+          </div>
+          <p className="text-xs font-semibold text-ink-muted">unpaid orders</p>
         </Link>
-        <Link to="/orders" className="rounded-xl bg-white p-4 shadow-sm hover:bg-violet-50">
-          <p className="text-lg font-bold">{stats.toSend}</p>
-          <p className="text-xs text-gray-500">paid, not sent</p>
+        <Link
+          to="/orders"
+          className="tap animate-pop rounded-card bg-surface p-4 shadow-card"
+          style={{ animationDelay: '300ms' }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="font-display text-2xl text-brand">
+              <AnimatedNumber value={stats.toSend} />
+            </p>
+            <ChevronRight size={18} className="text-ink-faint" />
+          </div>
+          <p className="text-xs font-semibold text-ink-muted">paid, not sent</p>
         </Link>
       </div>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-gray-600">Upcoming collect deadlines</h2>
-        {upcoming.length === 0 && <p className="text-sm text-gray-400">No upcoming deadlines.</p>}
+        <h2 className="mb-2 text-sm font-bold text-ink-muted">Upcoming collect deadlines</h2>
+        {upcoming.length === 0 && <p className="text-sm text-ink-faint">No upcoming deadlines.</p>}
         <div className="space-y-2">
           {upcoming.map((c) => (
-            <Link key={c.id} to="/collects" className="flex items-center justify-between rounded-xl bg-white p-3 shadow-sm hover:bg-violet-50">
+            <Link
+              key={c.id}
+              to="/collects"
+              className="tap flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
+            >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{c.name}</p>
-                <p className="text-xs text-gray-500">{c.vendor}</p>
+                <p className="truncate text-sm font-bold">{c.name}</p>
+                <p className="text-xs text-ink-muted">{c.vendor}</p>
               </div>
-              <span className="shrink-0 text-sm text-gray-600">{formatDate(c.deadline)}</span>
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-sun/20 px-3 py-1.5 text-xs font-bold text-ink">
+                <CalendarClock size={13} />
+                {formatDate(c.deadline)}
+              </span>
             </Link>
           ))}
         </div>

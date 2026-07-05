@@ -10,28 +10,24 @@ interface ModalProps {
 
 export default function Modal({ title, open, onClose, children }: ModalProps) {
   const [closing, setClosing] = useState(false)
+  const closingRef = useRef(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  // Reset the closing state when a fresh open begins
-  useEffect(() => {
-    if (open) {
-      setClosing(false)
-      clearTimeout(closeTimer.current)
-    }
-  }, [open])
 
   useEffect(() => () => clearTimeout(closeTimer.current), [])
 
   if (!open && !closing) return null
 
   const requestClose = () => {
-    if (closing) return
+    if (closingRef.current) return
+    closingRef.current = true
     setClosing(true)
-    // Safety net in case animationend never fires (e.g. reduced motion edge cases)
-    closeTimer.current = setTimeout(finishClose, 300)
+    // Safety net in case animationend never fires
+    closeTimer.current = setTimeout(finishClose, 400)
   }
 
   const finishClose = () => {
+    if (!closingRef.current) return
+    closingRef.current = false
     clearTimeout(closeTimer.current)
     setClosing(false)
     onClose()
@@ -50,7 +46,7 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
         }`}
         onClick={(e) => e.stopPropagation()}
         onAnimationEnd={() => {
-          if (closing) finishClose()
+          if (closingRef.current) finishClose()
         }}
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line md:hidden" aria-hidden />

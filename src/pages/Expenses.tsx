@@ -1,11 +1,25 @@
 import { useMemo, useState } from 'react'
+import {
+  Plus,
+  Trash2,
+  Store,
+  Package2,
+  Truck,
+  MoreHorizontal,
+  Printer,
+  Receipt,
+  Loader2,
+  type LucideIcon,
+} from 'lucide-react'
 import type { Expense, ExpenseFeedRow } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList } from '../hooks/useTable'
 import { formatDate, formatRub, monthKey } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
+import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 const CATEGORY_LABELS: Record<string, string> = {
   shelf_rent: 'Shelf rent',
@@ -13,6 +27,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   shipping: 'Shipping',
   other: 'Other',
   collect: 'Collect',
+}
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  shelf_rent: Store,
+  supplies: Package2,
+  shipping: Truck,
+  other: MoreHorizontal,
+  collect: Printer,
 }
 
 export default function Expenses() {
@@ -51,56 +73,91 @@ export default function Expenses() {
     )
   }
 
+  function confirmDelete(id: string) {
+    if (confirm('Delete this expense?')) {
+      haptic([10, 30, 10])
+      remove.mutate(id)
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Expenses</h1>
-        <button onClick={() => setAdding(true)} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
-          + Add expense
+        <h1 className="font-display text-2xl">Expenses</h1>
+        <button
+          onClick={() => {
+            haptic()
+            setAdding(true)
+          }}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+        >
+          <Plus size={16} strokeWidth={3} />
+          Add expense
         </button>
       </div>
 
-      {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && (feed ?? []).length === 0 && <EmptyState message="No expenses yet." />}
+      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
+      {!isLoading && (feed ?? []).length === 0 && <EmptyState icon={Receipt} message="No expenses yet." />}
 
       {byMonth.map(([month, rows]) => (
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-gray-600">{month}</h2>
-            <span className="text-sm font-bold text-red-600">
+            <h2 className="font-display text-sm text-ink-muted">{month}</h2>
+            <span className="font-display text-sm text-bad">
               −{formatRub(rows.reduce((s, r) => s + r.amount, 0))}
             </span>
           </div>
           <div className="space-y-2">
-            {rows.map((row) => (
-              <div key={`${row.source}-${row.id}`} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm">
-                <div className="min-w-0">
-                  <p className="truncate text-sm">{row.description || CATEGORY_LABELS[row.category] || row.category}</p>
-                  <p className="text-xs text-gray-500">
-                    {formatDate(row.date)} · {CATEGORY_LABELS[row.category] ?? row.category}
-                    {row.source === 'collect' && (
-                      <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                        from collects
-                      </span>
+            {rows.map((row) => {
+              const CategoryIcon = CATEGORY_ICONS[row.category] ?? MoreHorizontal
+              const content = (
+                <div className="flex items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                    <CategoryIcon size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">
+                      {row.description || CATEGORY_LABELS[row.category] || row.category}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {formatDate(row.date)} · {CATEGORY_LABELS[row.category] ?? row.category}
+                      {row.source === 'collect' && (
+                        <span className="ml-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold text-brand">
+                          from collects
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span className="font-display text-sm">{formatRub(row.amount)}</span>
+                    {row.source === 'manual' && (
+                      <button
+                        onClick={() => confirmDelete(row.id)}
+                        className="tap flex size-10 items-center justify-center rounded-full text-ink-faint hover:text-bad"
+                        aria-label="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     )}
-                  </p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-sm font-semibold">{formatRub(row.amount)}</span>
-                  {row.source === 'manual' && (
-                    <button
-                      onClick={() => {
-                        if (confirm('Delete this expense?')) remove.mutate(row.id)
-                      }}
-                      className="rounded p-1 text-gray-400 hover:text-red-600"
-                      aria-label="Delete"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              )
+              return row.source === 'manual' ? (
+                <SwipeableRow
+                  key={`${row.source}-${row.id}`}
+                  right={{
+                    icon: Trash2,
+                    label: 'delete',
+                    className: 'bg-rose-500',
+                    onAction: () => confirmDelete(row.id),
+                  }}
+                >
+                  {content}
+                </SwipeableRow>
+              ) : (
+                <div key={`${row.source}-${row.id}`}>{content}</div>
+              )
+            })}
           </div>
         </section>
       ))}

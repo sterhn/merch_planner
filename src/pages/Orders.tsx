@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Plus, Search, PackageOpen, BadgeCheck, Trash2, Loader2 } from 'lucide-react'
 import type { Order } from '../lib/types'
-import { useInsert, useList } from '../hooks/useTable'
+import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
+import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 type Filter = 'all' | 'unpaid' | 'to_send' | 'done'
 
@@ -20,6 +23,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 export default function Orders() {
   const { data: orders, isLoading } = useList<Order>('orders', { orderBy: 'created_at', ascending: false })
   const insert = useInsert<Order>('orders')
+  const update = useUpdate<Order>('orders')
+  const remove = useDelete('orders')
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
@@ -53,21 +58,41 @@ export default function Orders() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Orders</h1>
-        <button onClick={() => setAdding(true)} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
-          + New order
+        <h1 className="font-display text-2xl">Orders</h1>
+        <button
+          onClick={() => {
+            haptic()
+            setAdding(true)
+          }}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+        >
+          <Plus size={16} strokeWidth={3} />
+          New order
         </button>
       </div>
 
-      <input placeholder="Search telegram or email…" value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputClass} mb-3`} />
+      <div className="relative mb-3">
+        <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          placeholder="Search telegram or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${inputClass} pl-11`}
+        />
+      </div>
 
       <div className="mb-4 flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
           <button
             key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${
-              filter === f.key ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 shadow-sm'
+            onClick={() => {
+              haptic(5)
+              setFilter(f.key)
+            }}
+            className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold ${
+              filter === f.key
+                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card'
+                : 'bg-surface text-ink-muted shadow-card'
             }`}
           >
             {f.label}
@@ -75,27 +100,46 @@ export default function Orders() {
         ))}
       </div>
 
-      {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState message="No orders found." />}
+      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
+      {!isLoading && filtered.length === 0 && (
+        <EmptyState icon={PackageOpen} message="No orders found." hint="Swipe a row to mark paid or delete." />
+      )}
 
       <div className="space-y-2">
         {filtered.map((o) => (
-          <Link
+          <SwipeableRow
             key={o.id}
-            to={`/orders/${o.id}`}
-            className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm hover:bg-violet-50"
+            left={{
+              icon: BadgeCheck,
+              label: o.paid ? 'unpaid' : 'paid',
+              className: 'bg-emerald-500',
+              onAction: () => update.mutate({ id: o.id, values: { paid: !o.paid } }),
+            }}
+            right={{
+              icon: Trash2,
+              label: 'delete',
+              className: 'bg-rose-500',
+              onAction: () => {
+                if (confirm('Delete this order?')) remove.mutate(o.id)
+              },
+            }}
           >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{o.telegram || o.customer_email || 'no contact'}</p>
-              <p className="truncate text-xs text-gray-500">{o.delivery_method ?? 'no delivery method'}</p>
-              <div className="mt-1 flex gap-1">
-                <StatusBadge on={o.paid} label="paid" />
-                <StatusBadge on={o.sent} label="sent" />
-                <StatusBadge on={o.delivered} label="delivered" />
+            <Link
+              to={`/orders/${o.id}`}
+              className="tap flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold">{o.telegram || o.customer_email || 'no contact'}</p>
+                <p className="truncate text-xs text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>
+                <div className="mt-1.5 flex gap-1">
+                  <StatusBadge on={o.paid} label="paid" />
+                  <StatusBadge on={o.sent} label="sent" />
+                  <StatusBadge on={o.delivered} label="delivered" />
+                </div>
               </div>
-            </div>
-            <span className="shrink-0 text-sm font-semibold">{formatRub(o.total_price)}</span>
-          </Link>
+              <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
+            </Link>
+          </SwipeableRow>
         ))}
       </div>
 
@@ -107,7 +151,7 @@ export default function Orders() {
           <Field label="Email">
             <input className={inputClass} type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
           </Field>
-          <p className="mb-3 text-xs text-gray-500">You can add items and details on the next screen.</p>
+          <p className="mb-3 text-xs text-ink-muted">You can add items and details on the next screen.</p>
           <PrimaryButton type="submit" disabled={insert.isPending}>
             Create
           </PrimaryButton>

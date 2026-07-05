@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -8,7 +9,7 @@ import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 
 function HeaderForm({
   order,
@@ -41,8 +42,8 @@ function HeaderForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-xl bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold text-gray-600">Details</h2>
+    <form onSubmit={submit} className="rounded-card bg-surface p-4 shadow-card">
+      <h2 className="mb-3 font-display text-sm text-ink-muted">Details</h2>
       <div className="grid gap-x-3 md:grid-cols-2">
         <Field label="Telegram">
           <input className={inputClass} value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} />
@@ -65,10 +66,10 @@ function HeaderForm({
         </Field>
       </div>
       <Field label="Delivery details / address">
-        <textarea className={inputClass} rows={3} value={form.delivery_details} onChange={(e) => setForm({ ...form, delivery_details: e.target.value })} />
+        <textarea className={textareaClass} rows={3} value={form.delivery_details} onChange={(e) => setForm({ ...form, delivery_details: e.target.value })} />
       </Field>
       <Field label="Comment">
-        <textarea className={inputClass} rows={2} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+        <textarea className={textareaClass} rows={2} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
       </Field>
       <PrimaryButton type="submit" disabled={pending}>
         Save details
@@ -122,7 +123,7 @@ export default function OrderDetail() {
     [lines],
   )
 
-  if (!order) return <p className="py-12 text-center text-sm text-gray-400">Loading…</p>
+  if (!order) return <p className="py-12 text-center text-sm text-ink-faint">Loading…</p>
 
   function invalidateDetail() {
     qc.invalidateQueries({ queryKey: ['orders', id] })
@@ -156,43 +157,51 @@ export default function OrderDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate('/orders')} className="mb-3 text-sm text-violet-700">
-        ← Back to orders
+      <button
+        onClick={() => navigate('/orders')}
+        className="tap -ml-2 mb-3 flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-bold text-brand"
+      >
+        <ArrowLeft size={16} />
+        Back to orders
       </button>
 
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate text-xl font-bold">{order.telegram || order.customer_email || 'Order'}</h1>
-        <span className="shrink-0 text-lg font-bold">{formatRub(order.total_price)}</span>
+        <h1 className="min-w-0 truncate font-display text-xl">{order.telegram || order.customer_email || 'Order'}</h1>
+        <span className="shrink-0 font-display text-lg">{formatRub(order.total_price)}</span>
       </div>
 
-      <div className="mb-5 flex gap-2">
+      <div className="mb-5 flex gap-2 *:flex-1">
         <StatusBadge on={order.paid} label="paid" onClick={() => toggle('paid')} />
         <StatusBadge on={order.sent} label="sent" onClick={() => toggle('sent')} />
         <StatusBadge on={order.delivered} label="delivered" onClick={() => toggle('delivered')} />
       </div>
 
-      <section className="mb-6 rounded-xl bg-white p-4 shadow-sm">
+      <section className="mb-6 rounded-card bg-surface p-4 shadow-card">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-600">Items</h2>
-          <button onClick={() => setAddingLine(true)} className="text-sm font-medium text-violet-700">
-            + Add item
+          <h2 className="font-display text-sm text-ink-muted">Items</h2>
+          <button
+            onClick={() => setAddingLine(true)}
+            className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand"
+          >
+            <Plus size={15} strokeWidth={3} />
+            Add item
           </button>
         </div>
-        {(lines ?? []).length === 0 && <p className="py-3 text-sm text-gray-400">No items.</p>}
-        <ul className="divide-y divide-gray-100">
+        {(lines ?? []).length === 0 && <p className="py-3 text-sm text-ink-faint">No items.</p>}
+        <ul className="divide-y divide-line">
           {(lines ?? []).map((l) => {
             const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
             return (
               <li key={l.id} className="flex items-center justify-between gap-2 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm">
+                  <p className="truncate text-sm font-semibold">
                     {catalogItem?.name ?? l.name_text ?? '—'}
-                    {l.qty > 1 && <span className="text-gray-500"> ×{l.qty}</span>}
+                    {l.qty > 1 && <span className="text-ink-muted"> ×{l.qty}</span>}
                   </p>
-                  {l.category && <p className="text-xs text-gray-400">{l.category}</p>}
+                  {l.category && <p className="text-xs text-ink-faint">{l.category}</p>}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-sm">{formatRub(l.unit_price)}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span className="text-sm font-semibold">{formatRub(l.unit_price)}</span>
                   <button
                     onClick={() => {
                       if (confirm('Remove this item?'))
@@ -200,10 +209,10 @@ export default function OrderDetail() {
                           onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
                         })
                     }}
-                    className="rounded p-1 text-gray-400 hover:text-red-600"
+                    className="tap flex size-10 items-center justify-center rounded-full text-ink-faint hover:text-bad"
                     aria-label="Remove"
                   >
-                    ✕
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </li>
@@ -211,7 +220,7 @@ export default function OrderDetail() {
           })}
         </ul>
         {(lines ?? []).length > 0 && (
-          <p className="mt-2 text-right text-xs text-gray-500">items total: {formatRub(linesTotal)}</p>
+          <p className="mt-2 text-right font-display text-xs text-ink-muted">items total: {formatRub(linesTotal)}</p>
         )}
       </section>
 
@@ -222,15 +231,16 @@ export default function OrderDetail() {
         onSave={(values) => updateOrder.mutate({ id: id!, values }, { onSuccess: invalidateDetail })}
       />
 
-      <button
-        onClick={() => {
-          if (confirm('Delete this whole order?'))
-            deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') })
-        }}
-        className="mt-4 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-      >
-        Delete order
-      </button>
+      <div className="mt-4">
+        <DangerButton
+          onClick={() => {
+            if (confirm('Delete this whole order?'))
+              deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') })
+          }}
+        >
+          Delete order
+        </DangerButton>
+      </div>
 
       <Modal title="Add item" open={addingLine} onClose={() => setAddingLine(false)}>
         <form onSubmit={addLine}>

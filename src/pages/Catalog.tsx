@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
+import { Plus, Search, Tags, ImageOff, X, Loader2 } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { uploadItemImage } from '../lib/images'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
@@ -83,43 +85,54 @@ export default function Catalog() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Catalog</h1>
+        <h1 className="font-display text-2xl">Catalog</h1>
         <button
-          onClick={() => openEditor('new')}
-          className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white"
+          onClick={() => {
+            haptic()
+            openEditor('new')
+          }}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
         >
-          + Add item
+          <Plus size={16} strokeWidth={3} />
+          Add item
         </button>
       </div>
-      <input
-        placeholder="Search…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className={`${inputClass} mb-4`}
-      />
+      <div className="relative mb-4">
+        <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          placeholder="Search…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${inputClass} pl-11`}
+        />
+      </div>
 
-      {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState message="No items yet." />}
+      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
+      {!isLoading && filtered.length === 0 && <EmptyState icon={Tags} message="No items yet." />}
 
       <div className="space-y-2">
         {filtered.map((item) => (
           <button
             key={item.id}
             onClick={() => openEditor(item)}
-            className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
+            className="tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10"
           >
-            {item.image_url && (
-              <img src={item.image_url} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+            {item.image_url ? (
+              <img src={item.image_url} alt="" className="size-12 shrink-0 rounded-xl object-cover" loading="lazy" />
+            ) : (
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-faint">
+                <ImageOff size={18} />
+              </span>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{item.name}</p>
-              <p className="truncate text-xs text-gray-500">
+              <p className="truncate text-sm font-bold">{item.name}</p>
+              <p className="truncate text-xs text-ink-muted">
                 {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold">{formatRub(item.sale_price)}</p>
-              <p className="text-xs text-gray-500">stock: {item.stock_qty ?? 0}</p>
+              <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
+              <p className="text-xs text-ink-muted">stock: {item.stock_qty ?? 0}</p>
             </div>
           </button>
         ))}
@@ -154,7 +167,7 @@ export default function Catalog() {
                 type="file"
                 accept="image/*"
                 onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-                className="min-w-0 flex-1 text-xs text-gray-600 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:text-xs file:font-medium file:text-violet-700"
+                className="min-w-0 flex-1 text-xs text-ink-muted file:mr-2 file:rounded-full file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand"
               />
               {(photoFile || form.image_url) && (
                 <button
@@ -163,10 +176,10 @@ export default function Catalog() {
                     setPhotoFile(null)
                     setForm({ ...form, image_url: '' })
                   }}
-                  className="shrink-0 rounded p-1 text-gray-400 hover:text-red-600"
+                  className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
                   aria-label="Remove photo"
                 >
-                  ✕
+                  <X size={16} />
                 </button>
               )}
             </div>
@@ -186,15 +199,16 @@ export default function Catalog() {
             {uploading ? 'Uploading photo…' : 'Save'}
           </PrimaryButton>
           {editing !== 'new' && editing && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Delete this item?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
-              }}
-              className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              Delete
-            </button>
+            <div className="mt-2">
+              <DangerButton
+                type="button"
+                onClick={() => {
+                  if (confirm('Delete this item?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
+                }}
+              >
+                Delete
+              </DangerButton>
+            </div>
           )}
         </form>
       </Modal>

@@ -18,10 +18,14 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gray-50 p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm">
-        <h1 className="mb-1 text-center text-xl font-bold text-violet-700">Merch Planner</h1>
-        <p className="mb-6 text-center text-sm text-gray-500">Sign in to your tracker</p>
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page p-6">
+      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-violet-500/30 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 size-72 rounded-full bg-fuchsia-400/20 blur-3xl" aria-hidden />
+      <form onSubmit={handleSubmit} className="relative w-full max-w-sm animate-pop rounded-sheet bg-surface p-6 shadow-card">
+        <h1 className="mb-1 bg-gradient-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-center font-display text-xl text-transparent">
+          Merch Planner
+        </h1>
+        <p className="mb-6 text-center text-sm text-ink-muted">Sign in to your tracker</p>
         <Field label="Email">
           <input
             type="email"
@@ -42,7 +46,7 @@ export default function Login() {
             className={inputClass}
           />
         </Field>
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mb-3 text-sm font-semibold text-bad">{error}</p>}
         <PrimaryButton type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </PrimaryButton>

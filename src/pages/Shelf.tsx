@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
+import { Plus, Store, Check, ReceiptText, Loader2 } from 'lucide-react'
 import type { Expense, ShelfItem } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import AnimatedNumber from '../components/AnimatedNumber'
+import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 const EMPTY = { name: '', price: '', month: '', qty_sent: '', qty_sold: '' }
 
@@ -83,9 +86,16 @@ export default function Shelf() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Shelf</h1>
-        <button onClick={() => openEditor('new')} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
-          + Add position
+        <h1 className="font-display text-2xl">Shelf</h1>
+        <button
+          onClick={() => {
+            haptic()
+            openEditor('new')
+          }}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+        >
+          <Plus size={16} strokeWidth={3} />
+          Add position
         </button>
       </div>
 
@@ -98,45 +108,55 @@ export default function Shelf() {
             </option>
           ))}
         </select>
-        <button onClick={logRent} className="rounded-lg border border-violet-300 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50">
-          {rentLogged ? '✓ Rent logged' : 'Log rent'}
+        <button
+          onClick={logRent}
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand/40 px-4 text-sm font-bold text-brand hover:bg-brand/10"
+        >
+          {rentLogged ? <Check size={15} strokeWidth={3} /> : <ReceiptText size={15} />}
+          {rentLogged ? 'Rent logged' : 'Log rent'}
         </button>
       </div>
 
       <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-white p-3 shadow-sm">
-          <p className="text-lg font-bold">{totals.sent}</p>
-          <p className="text-xs text-gray-500">sent</p>
+        <div className="rounded-card bg-gradient-to-br from-sky-500 to-indigo-500 p-3 text-white shadow-card">
+          <p className="font-display text-lg">
+            <AnimatedNumber value={totals.sent} />
+          </p>
+          <p className="text-xs font-semibold text-white/80">sent</p>
         </div>
-        <div className="rounded-xl bg-white p-3 shadow-sm">
-          <p className="text-lg font-bold">{totals.sold}</p>
-          <p className="text-xs text-gray-500">sold</p>
+        <div className="rounded-card bg-gradient-to-br from-violet-600 to-fuchsia-500 p-3 text-white shadow-card">
+          <p className="font-display text-lg">
+            <AnimatedNumber value={totals.sold} />
+          </p>
+          <p className="text-xs font-semibold text-white/80">sold</p>
         </div>
-        <div className="rounded-xl bg-white p-3 shadow-sm">
-          <p className="text-lg font-bold">{formatRub(totals.income)}</p>
-          <p className="text-xs text-gray-500">income</p>
+        <div className="rounded-card bg-gradient-to-br from-emerald-500 to-teal-500 p-3 text-white shadow-card">
+          <p className="font-display text-lg">
+            <AnimatedNumber value={totals.income} format={formatRub} />
+          </p>
+          <p className="text-xs font-semibold text-white/80">income</p>
         </div>
       </div>
 
-      {isLoading && <EmptyState message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState message="No shelf positions yet." />}
+      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
+      {!isLoading && filtered.length === 0 && <EmptyState icon={Store} message="No shelf positions yet." />}
 
       <div className="space-y-2">
         {filtered.map((r) => (
           <button
             key={r.id}
             onClick={() => openEditor(r)}
-            className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
+            className="tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10"
           >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{r.name}</p>
-              <p className="text-xs text-gray-500">
+              <p className="truncate text-sm font-bold">{r.name}</p>
+              <p className="text-xs text-ink-muted">
                 {r.month ?? '—'} · sent {r.qty_sent ?? 0} · sold {r.qty_sold ?? 0} · left {r.qty_remaining ?? 0}
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold">{formatRub(r.price)}</p>
-              <p className="text-xs text-green-700">{formatRub(r.income)}</p>
+              <p className="font-display text-sm">{formatRub(r.price)}</p>
+              <p className="text-xs font-bold text-good">{formatRub(r.income)}</p>
             </div>
           </button>
         ))}
@@ -165,15 +185,16 @@ export default function Shelf() {
             Save
           </PrimaryButton>
           {editing !== 'new' && editing && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Delete this position?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
-              }}
-              className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              Delete
-            </button>
+            <div className="mt-2">
+              <DangerButton
+                type="button"
+                onClick={() => {
+                  if (confirm('Delete this position?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
+                }}
+              >
+                Delete
+              </DangerButton>
+            </div>
           )}
         </form>
       </Modal>
