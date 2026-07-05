@@ -1,9 +1,85 @@
 @import "tailwindcss";
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/unbounded";
+
+@theme {
+  /* Typography */
+  --font-sans: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Unbounded Variable", "Nunito Variable", ui-sans-serif, sans-serif;
+
+  /* Brand */
+  --color-brand: light-dark(oklch(0.54 0.25 293), oklch(0.72 0.19 293));
+  --color-brand-strong: oklch(0.54 0.25 293);
+  --color-accent: oklch(0.67 0.26 322);
+  --color-sun: oklch(0.83 0.16 84);
+
+  /* Semantic surfaces & ink — flip automatically with the system theme */
+  --color-page: light-dark(oklch(0.975 0.008 295), oklch(0.17 0.02 290));
+  --color-surface: light-dark(#ffffff, oklch(0.23 0.025 290));
+  --color-surface-2: light-dark(oklch(0.955 0.012 295), oklch(0.28 0.03 290));
+  --color-ink: light-dark(oklch(0.25 0.03 290), oklch(0.95 0.01 290));
+  --color-ink-muted: light-dark(oklch(0.5 0.02 290), oklch(0.72 0.02 290));
+  --color-ink-faint: light-dark(oklch(0.68 0.02 290), oklch(0.55 0.02 290));
+  --color-line: light-dark(oklch(0.91 0.015 295), oklch(0.33 0.025 290));
+  --color-good: light-dark(oklch(0.52 0.17 155), oklch(0.78 0.16 160));
+  --color-bad: light-dark(oklch(0.58 0.22 20), oklch(0.72 0.19 20));
+
+  /* Radius */
+  --radius-control: 0.875rem;
+  --radius-card: 1.25rem;
+  --radius-sheet: 1.75rem;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px oklch(0.3 0.05 293 / 6%), 0 6px 20px -6px oklch(0.3 0.05 293 / 10%);
+
+  /* Motion */
+  --animate-sheet-up: sheet-up 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-sheet-down: sheet-down 0.25s ease-in forwards;
+  --animate-pop: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-fade-out: fade-out 0.2s ease-in forwards;
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+  }
+  @keyframes sheet-down {
+    to { transform: translateY(100%); opacity: 0.6; }
+  }
+  @keyframes pop {
+    from { transform: scale(0.94); opacity: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+  }
+  @keyframes fade-out {
+    to { opacity: 0; }
+  }
+}
+
+@utility tap {
+  transition: transform 150ms ease;
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+:root {
+  color-scheme: light dark;
+}
 
 html {
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-page font-sans text-ink antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
