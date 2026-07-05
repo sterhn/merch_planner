@@ -66,11 +66,14 @@ export default function Dashboard() {
   }, [orders, shelf, expenses])
 
   const upcoming = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const today = now.toISOString().slice(0, 10)
+    const soon = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10)
     return (collects ?? [])
       .filter((c) => c.deadline != null && c.deadline >= today)
       .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))
       .slice(0, 3)
+      .map((c) => ({ ...c, urgent: c.deadline! <= soon }))
   }, [collects])
 
   return (
@@ -151,7 +154,11 @@ export default function Dashboard() {
                 <p className="truncate text-sm font-bold">{c.name}</p>
                 <p className="text-xs text-ink-muted">{c.vendor}</p>
               </div>
-              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-sun/20 px-3 py-1.5 text-xs font-bold text-ink">
+              <span
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
+                  c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/20 text-ink'
+                }`}
+              >
                 <CalendarClock size={13} />
                 {formatDate(c.deadline)}
               </span>

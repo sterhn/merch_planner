@@ -4,13 +4,14 @@ import { supabase } from '../lib/supabase'
 interface ListOptions {
   orderBy?: string
   ascending?: boolean
+  select?: string
 }
 
 export function useList<T>(table: string, opts: ListOptions = {}) {
   return useQuery({
-    queryKey: [table],
+    queryKey: [table, opts.orderBy ?? null, opts.ascending ?? true, opts.select ?? '*'],
     queryFn: async (): Promise<T[]> => {
-      let query = supabase.from(table).select('*')
+      let query = supabase.from(table).select(opts.select ?? '*')
       if (opts.orderBy) query = query.order(opts.orderBy, { ascending: opts.ascending ?? true })
       const { data, error } = await query
       if (error) throw error

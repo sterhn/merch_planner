@@ -38,7 +38,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 }
 
 export default function Expenses() {
-  const { data: feed, isLoading } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
+  const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
   const remove = useDelete('expenses', ['expense_feed'])
 
@@ -97,7 +97,8 @@ export default function Expenses() {
       </div>
 
       {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {!isLoading && (feed ?? []).length === 0 && <EmptyState icon={Receipt} message="No expenses yet." />}
+      {isError && <EmptyState icon={Receipt} message="Failed to load expenses." onRetry={() => refetch()} />}
+      {!isLoading && !isError && (feed ?? []).length === 0 && <EmptyState icon={Receipt} message="No expenses yet." />}
 
       {byMonth.map(([month, rows]) => (
         <section key={month} className="mb-5">

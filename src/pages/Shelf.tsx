@@ -12,7 +12,7 @@ import { haptic } from '../lib/haptics'
 const EMPTY = { name: '', price: '', month: '', qty_sent: '', qty_sold: '' }
 
 export default function Shelf() {
-  const { data: rows, isLoading } = useList<ShelfItem>('shelf_items', { orderBy: 'name' })
+  const { data: rows, isLoading, isError, refetch } = useList<ShelfItem>('shelf_items', { orderBy: 'name' })
   const insert = useInsert<ShelfItem>('shelf_items')
   const update = useUpdate<ShelfItem>('shelf_items')
   const remove = useDelete('shelf_items')
@@ -70,14 +70,19 @@ export default function Shelf() {
 
   function logRent() {
     const m = month !== 'all' ? month : new Date().toISOString().slice(0, 7)
-    const amount = prompt(`Shelf rent amount for ${m} (₽):`, '1500')
-    if (!amount) return
+    const raw = prompt(`Shelf rent amount for ${m} (₽):`, '1500')
+    if (!raw) return
+    const amount = Number(raw.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a valid amount, e.g. 1500.')
+      return
+    }
     insertExpense.mutate(
       {
         date: `${m}-01`,
         category: 'shelf_rent',
         description: `Shelf rent ${m}`,
-        amount: Number(amount),
+        amount,
       },
       { onSuccess: () => setRentLogged(true) },
     )
@@ -139,7 +144,8 @@ export default function Shelf() {
       </div>
 
       {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {!isLoading && filtered.length === 0 && <EmptyState icon={Store} message="No shelf positions yet." />}
+      {isError && <EmptyState icon={Store} message="Failed to load shelf." onRetry={() => refetch()} />}
+      {!isLoading && !isError && filtered.length === 0 && <EmptyState icon={Store} message="No shelf positions yet." />}
 
       <div className="space-y-2">
         {filtered.map((r) => (

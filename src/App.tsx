@@ -3,6 +3,7 @@ import { Settings, Loader2 } from 'lucide-react'
 import { useAuth } from './hooks/useAuth'
 import { supabaseConfigured } from './lib/supabase'
 import Layout from './components/Layout'
+import Toast from './components/Toast'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
@@ -40,17 +41,20 @@ export default function App() {
   if (!session) return <Login />
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="orders" element={<Orders />} />
-        <Route path="orders/:id" element={<OrderDetail />} />
-        <Route path="catalog" element={<Catalog />} />
-        <Route path="collects" element={<Collects />} />
-        <Route path="shelf" element={<Shelf />} />
-        <Route path="expenses" element={<Expenses />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="orders" element={<Orders />} />
+          <Route path="orders/:id" element={<OrderDetail />} />
+          <Route path="catalog" element={<Catalog />} />
+          <Route path="collects" element={<Collects />} />
+          <Route path="shelf" element={<Shelf />} />
+          <Route path="expenses" element={<Expenses />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+      <Toast />
+    </>
   )
 }

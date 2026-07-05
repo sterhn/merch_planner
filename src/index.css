@@ -75,6 +75,13 @@ body {
   @apply bg-page font-sans text-ink antialiased;
 }
 
+@media print {
+  aside,
+  nav.fixed {
+    display: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

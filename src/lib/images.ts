@@ -17,6 +17,21 @@ async function downscale(file: File): Promise<Blob> {
   )
 }
 
+// Best-effort cleanup of a replaced/removed photo so the free-tier storage
+// doesn't slowly fill with orphaned files. Failures are ignored.
+export async function deleteItemImage(url: string | null | undefined): Promise<void> {
+  if (!url) return
+  const marker = `/object/public/${BUCKET}/`
+  const idx = url.indexOf(marker)
+  if (idx === -1) return
+  const path = decodeURIComponent(url.slice(idx + marker.length))
+  try {
+    await supabase.storage.from(BUCKET).remove([path])
+  } catch {
+    // ignore
+  }
+}
+
 export async function uploadItemImage(file: File): Promise<string> {
   const blob = await downscale(file)
   const path = `${crypto.randomUUID()}.webp`
