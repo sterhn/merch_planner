@@ -54,14 +54,21 @@ export default function Layout() {
             key={n.to}
             to={n.to}
             end={n.to === '/'}
-            className={({ isActive }) =>
-              `flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${
-                isActive ? 'text-violet-700' : 'text-gray-500'
-              }`
-            }
+            className="relative flex flex-1 flex-col items-center justify-center pt-2 pb-1 min-h-[52px]"
           >
-            <span className="text-lg leading-none">{n.icon}</span>
-            {n.label}
+            {({ isActive }) => (
+              <>
+                <span className={`text-xl leading-none transition-transform ${isActive ? 'scale-110' : ''}`}>
+                  {n.icon}
+                </span>
+                <span className={`mt-0.5 text-[10px] font-semibold ${isActive ? 'text-violet-700' : 'text-gray-400'}`}>
+                  {n.label}
+                </span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-violet-600" />
+                )}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

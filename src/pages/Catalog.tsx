@@ -9,6 +9,18 @@ import { Field, inputClass, PrimaryButton } from '../components/FormField'
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
+function ItemImage({ src, type }: { src: string | null; type: string | null }) {
+  if (src) {
+    return <img src={src} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+  }
+  const initial = (type ?? '★').charAt(0).toUpperCase()
+  return (
+    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-lg font-bold text-violet-400">
+      {initial}
+    </div>
+  )
+}
+
 export default function Catalog() {
   const { data: items, isLoading } = useList<Item>('items', { orderBy: 'type' })
   const insert = useInsert<Item>('items')
@@ -106,20 +118,21 @@ export default function Catalog() {
           <button
             key={item.id}
             onClick={() => openEditor(item)}
-            className="flex w-full items-center justify-between gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
+            className="flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left shadow-sm hover:bg-violet-50"
           >
-            {item.image_url && (
-              <img src={item.image_url} alt="" className="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
-            )}
+            <ItemImage src={item.image_url} type={item.type} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{item.name}</p>
-              <p className="truncate text-xs text-gray-500">
-                {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
+              <p className="truncate text-xs text-gray-400">
+                {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit{' '}
+                {formatRub(item.profit)}
               </p>
             </div>
             <div className="shrink-0 text-right">
               <p className="text-sm font-semibold">{formatRub(item.sale_price)}</p>
-              <p className="text-xs text-gray-500">stock: {item.stock_qty ?? 0}</p>
+              <p className={`text-xs font-medium ${(item.stock_qty ?? 0) <= 2 ? 'text-amber-600' : 'text-gray-400'}`}>
+                stock: {item.stock_qty ?? 0}
+              </p>
             </div>
           </button>
         ))}
