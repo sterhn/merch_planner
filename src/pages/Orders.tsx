@@ -195,17 +195,18 @@ export default function Orders() {
           <button
             onClick={printOrders}
             disabled={printLoading || filtered.length === 0}
-            className="tap flex min-h-11 items-center gap-1.5 rounded-full border-2 border-line px-3.5 text-sm font-bold text-ink-muted hover:bg-surface-2 disabled:opacity-40"
+            aria-label="Print orders"
+            title="Print orders"
+            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink disabled:opacity-40"
           >
-            <Printer size={15} />
-            {printLoading ? 'Loading…' : `Print (${filtered.length})`}
+            {printLoading ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
           </button>
           <button
             onClick={() => {
               haptic()
               setAdding(true)
             }}
-            className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+            className="tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
           >
             <Plus size={16} strokeWidth={3} />
             New order

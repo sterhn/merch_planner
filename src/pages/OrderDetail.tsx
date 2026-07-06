@@ -365,10 +365,11 @@ export default function OrderDetail() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={printOrder}
-            className="tap flex min-h-11 items-center gap-1.5 rounded-full border-2 border-line px-3.5 text-sm font-bold text-ink-muted hover:bg-surface-2 print:hidden"
+            aria-label="Print / PDF"
+            title="Print / PDF"
+            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink print:hidden"
           >
-            <Printer size={15} />
-            Print / PDF
+            <Printer size={18} />
           </button>
           <span className="font-display text-lg">{formatRub(order.total_price)}</span>
         </div>

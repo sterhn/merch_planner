@@ -124,19 +124,19 @@ export default function Shelf() {
 
       <div className="mb-4 grid grid-cols-3 gap-2 text-center">
         <div className="rounded-card bg-gradient-to-br from-sky-500 to-indigo-500 p-3 text-white shadow-card">
-          <p className="font-display text-lg">
+          <p className="whitespace-nowrap font-display text-base">
             <AnimatedNumber value={totals.sent} />
           </p>
           <p className="text-xs font-semibold text-white/80">sent</p>
         </div>
         <div className="rounded-card bg-gradient-to-br from-violet-600 to-fuchsia-500 p-3 text-white shadow-card">
-          <p className="font-display text-lg">
+          <p className="whitespace-nowrap font-display text-base">
             <AnimatedNumber value={totals.sold} />
           </p>
           <p className="text-xs font-semibold text-white/80">sold</p>
         </div>
         <div className="rounded-card bg-gradient-to-br from-emerald-500 to-teal-500 p-3 text-white shadow-card">
-          <p className="font-display text-lg">
+          <p className="whitespace-nowrap font-display text-base">
             <AnimatedNumber value={totals.income} format={formatRub} />
           </p>
           <p className="text-xs font-semibold text-white/80">income</p>

@@ -1,6 +1,7 @@
 export function formatRub(value: number | null | undefined): string {
   if (value == null) return '—'
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value) + ' ₽'
+  // Non-breaking space so the ₽ never wraps to its own line
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value) + ' ₽'
 }
 
 export function formatDate(value: string | null | undefined): string {

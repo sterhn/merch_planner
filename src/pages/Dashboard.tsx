@@ -32,8 +32,8 @@ function StatTile({
       className={`animate-pop rounded-card bg-gradient-to-br p-4 text-white shadow-card ${gradient}`}
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      <div className="mb-2 flex items-start justify-between">
-        <p className="font-display text-xl leading-tight">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <p className="min-w-0 whitespace-nowrap font-display text-lg leading-tight">
           <AnimatedNumber value={value} format={formatRub} />
         </p>
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/20">
