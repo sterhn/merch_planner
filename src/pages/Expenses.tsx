@@ -14,7 +14,7 @@ import {
 import type { Expense, ExpenseFeedRow } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList } from '../hooks/useTable'
-import { formatDate, formatRub, monthKey } from '../lib/format'
+import { formatDate, formatRub, monthKey, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import SwipeableRow from '../components/SwipeableRow'
@@ -44,7 +44,7 @@ export default function Expenses() {
 
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: todayISO(),
     category: 'other' as Expense['category'],
     description: '',
     amount: '',

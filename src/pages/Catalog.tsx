@@ -93,6 +93,7 @@ export default function Catalog() {
   const [form, setForm] = useState(EMPTY)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
 
   const photoPreview = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
   useEffect(() => {
@@ -156,6 +157,7 @@ export default function Catalog() {
   function openEditor(item: Item | 'new') {
     setEditing(item)
     setPhotoFile(null)
+    setPhotoError(null)
     if (item === 'new') {
       setForm(EMPTY)
     } else {
@@ -175,12 +177,13 @@ export default function Catalog() {
   async function save(e: React.FormEvent) {
     e.preventDefault()
     let imageUrl = form.image_url || null
+    setPhotoError(null)
     if (photoFile) {
       setUploading(true)
       try {
         imageUrl = await uploadItemImage(photoFile)
       } catch {
-        alert('Photo upload failed — check that the item-images bucket exists (see README).')
+        setPhotoError('Photo upload failed — check that the item-images bucket exists (see README).')
         setUploading(false)
         return
       }
@@ -322,7 +325,7 @@ export default function Catalog() {
               {(photoFile || form.image_url) && (
                 <img
                   src={photoPreview ?? form.image_url}
-                  alt=""
+                  alt={form.name ? `Photo of ${form.name}` : 'Item photo'}
                   className="size-14 rounded-lg object-cover"
                 />
               )}
@@ -361,6 +364,11 @@ export default function Catalog() {
           <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
             {uploading ? 'Uploading photo…' : 'Save'}
           </PrimaryButton>
+          {photoError && (
+            <p role="alert" className="mt-2 text-sm font-semibold text-bad">
+              {photoError}
+            </p>
+          )}
           {editing !== 'new' && editing && (
             <div className="mt-2">
               <DangerButton

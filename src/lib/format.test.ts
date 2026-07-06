@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest'
+import { formatDate, formatRub, monthKey, toISODate, todayISO, currentMonth } from './format'
+
+describe('formatRub', () => {
+  it('formats numbers with the ruble sign', () => {
+    expect(formatRub(1500)).toMatch(/1\s500\s₽/u)
+  })
+  it('shows a dash for null/undefined', () => {
+    expect(formatRub(null)).toBe('—')
+    expect(formatRub(undefined)).toBe('—')
+  })
+})
+
+describe('formatDate', () => {
+  it('renders a date-only string as the same calendar day regardless of timezone', () => {
+    // Parsed as UTC this would show 05.07.2026 in negative-offset timezones.
+    expect(formatDate('2026-07-06')).toBe('06.07.2026')
+    expect(formatDate('2026-01-01')).toBe('01.01.2026')
+  })
+  it('shows a dash for empty values and passes through unparseable ones', () => {
+    expect(formatDate(null)).toBe('—')
+    expect(formatDate('')).toBe('—')
+    expect(formatDate('not-a-date')).toBe('not-a-date')
+  })
+})
+
+describe('monthKey', () => {
+  it('returns YYYY-MM', () => {
+    expect(monthKey('2026-07-06')).toBe('2026-07')
+  })
+})
+
+describe('toISODate / todayISO / currentMonth', () => {
+  it('formats the local calendar day, not UTC', () => {
+    expect(toISODate(new Date(2026, 6, 6))).toBe('2026-07-06')
+    const now = new Date()
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    expect(todayISO()).toBe(expected)
+    expect(currentMonth()).toBe(expected.slice(0, 7))
+  })
+})

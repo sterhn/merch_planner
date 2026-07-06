@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarClock } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
-import { formatDate, formatRub } from '../lib/format'
+import { formatDate, formatRub, toISODate } from '../lib/format'
 import AnimatedNumber from '../components/AnimatedNumber'
 
 function HeroCard({ value, isPositive }: { value: number; isPositive: boolean }) {
@@ -81,8 +81,8 @@ export default function Dashboard() {
 
   const upcoming = useMemo(() => {
     const now = new Date()
-    const today = now.toISOString().slice(0, 10)
-    const soon = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10)
+    const today = toISODate(now)
+    const soon = toISODate(new Date(now.getTime() + 7 * 86400000))
     return (collects ?? [])
       .filter((c) => c.deadline != null && c.deadline >= today)
       .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))
@@ -119,8 +119,8 @@ export default function Dashboard() {
 
       {hasActions && (
         <div className="mb-3 grid grid-cols-2 gap-2">
-          {stats.unpaid > 0 && <ActionCard label="unpaid orders" count={stats.unpaid} to="/orders" tone="danger" index={0} />}
-          {stats.toSend > 0 && <ActionCard label="paid, not sent" count={stats.toSend} to="/orders" tone="brand" index={1} />}
+          {stats.unpaid > 0 && <ActionCard label="unpaid orders" count={stats.unpaid} to="/orders?filter=unpaid" tone="danger" index={0} />}
+          {stats.toSend > 0 && <ActionCard label="paid, not sent" count={stats.toSend} to="/orders?filter=to_send" tone="brand" index={1} />}
         </div>
       )}
 

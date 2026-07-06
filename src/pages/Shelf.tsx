@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Store, Check, ReceiptText, Loader2 } from 'lucide-react'
 import type { Expense, ShelfItem } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatRub } from '../lib/format'
+import { currentMonth, formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import AnimatedNumber from '../components/AnimatedNumber'
@@ -61,6 +61,10 @@ export default function Shelf() {
   const [editing, setEditing] = useState<ShelfItem | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [rentLogged, setRentLogged] = useState(false)
+  const [rentOpen, setRentOpen] = useState(false)
+  const [rentAmount, setRentAmount] = useState('1500')
+
+  const rentMonth = month !== 'all' ? month : currentMonth()
 
   const months = useMemo(() => {
     const set = new Set((rows ?? []).map((r) => r.month).filter((m): m is string => Boolean(m)))
@@ -83,7 +87,7 @@ export default function Shelf() {
 
   function openEditor(r: ShelfItem | 'new') {
     setEditing(r)
-    if (r === 'new') setForm({ ...EMPTY, month: month !== 'all' ? month : new Date().toISOString().slice(0, 7) })
+    if (r === 'new') setForm({ ...EMPTY, month: month !== 'all' ? month : currentMonth() })
     else
       setForm({
         name: r.name,
@@ -107,15 +111,11 @@ export default function Shelf() {
     else if (editing) update.mutate({ id: editing.id, values }, { onSuccess: () => setEditing(null) })
   }
 
-  function logRent() {
-    const m = month !== 'all' ? month : new Date().toISOString().slice(0, 7)
-    const raw = prompt(`Shelf rent amount for ${m} (₽):`, '1500')
-    if (!raw) return
-    const amount = Number(raw.replace(',', '.'))
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Enter a valid amount, e.g. 1500.')
-      return
-    }
+  function saveRent(e: React.FormEvent) {
+    e.preventDefault()
+    const amount = Number(rentAmount.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) return
+    const m = rentMonth
     insertExpense.mutate(
       {
         date: `${m}-01`,
@@ -123,7 +123,12 @@ export default function Shelf() {
         description: `Shelf rent ${m}`,
         amount,
       },
-      { onSuccess: () => setRentLogged(true) },
+      {
+        onSuccess: () => {
+          setRentLogged(true)
+          setRentOpen(false)
+        },
+      },
     )
   }
 
@@ -153,7 +158,10 @@ export default function Shelf() {
           ))}
         </select>
         <button
-          onClick={logRent}
+          onClick={() => {
+            haptic()
+            setRentOpen(true)
+          }}
           className="tap flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand/40 px-4 text-sm font-bold text-brand hover:bg-brand/10"
         >
           {rentLogged ? <Check size={15} strokeWidth={3} /> : <ReceiptText size={15} />}
@@ -191,6 +199,26 @@ export default function Shelf() {
           <ShelfRow key={r.id} r={r} onClick={() => openEditor(r)} />
         ))}
       </div>
+
+      <Modal title={`Log shelf rent — ${rentMonth}`} open={rentOpen} onClose={() => setRentOpen(false)}>
+        <form onSubmit={saveRent}>
+          <Field label="Amount ₽">
+            <input
+              className={inputClass}
+              type="number"
+              step="0.01"
+              min="0.01"
+              inputMode="decimal"
+              required
+              value={rentAmount}
+              onChange={(e) => setRentAmount(e.target.value)}
+            />
+          </Field>
+          <PrimaryButton type="submit" disabled={insertExpense.isPending}>
+            Log rent
+          </PrimaryButton>
+        </form>
+      </Modal>
 
       <Modal title={editing === 'new' ? 'Add position' : 'Edit position'} open={editing !== null} onClose={() => setEditing(null)}>
         <form onSubmit={save}>

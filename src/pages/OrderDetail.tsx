@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Printer, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, PackageSearch, Plus, Printer, Search, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import StatusBadge from '../components/StatusBadge'
+import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
 import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 
@@ -187,7 +188,7 @@ export default function OrderDetail() {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
-  const { data: order } = useQuery({
+  const { data: order, isError: orderMissing } = useQuery({
     queryKey: ['orders', id],
     queryFn: async (): Promise<Order> => {
       const { data, error } = await supabase.from('orders').select('*').eq('id', id!).single()
@@ -228,7 +229,22 @@ export default function OrderDetail() {
     [lines],
   )
 
-  if (!order) return <p className="py-12 text-center text-sm text-ink-faint">Loading…</p>
+  if (orderMissing)
+    return (
+      <div>
+        <EmptyState icon={PackageSearch} message="Order not found" hint="It may have been deleted." />
+        <div className="text-center">
+          <button
+            onClick={() => navigate('/orders')}
+            className="tap min-h-11 rounded-full px-4 text-sm font-bold text-brand hover:bg-brand/10"
+          >
+            ← Back to orders
+          </button>
+        </div>
+      </div>
+    )
+
+  if (!order) return <EmptyState icon={Loader2} spin message="Loading…" />
 
   function invalidateDetail() {
     qc.invalidateQueries({ queryKey: ['orders', id] })
@@ -429,13 +445,29 @@ export default function OrderDetail() {
           })}
         </ul>
         {(lines ?? []).length > 0 && (
-          <p className="mt-2 text-right font-display text-xs text-ink-muted">items total: {formatRub(linesTotal)}</p>
+          <div className="mt-2 text-right">
+            <p className="font-display text-xs text-ink-muted">items total: {formatRub(linesTotal)}</p>
+            {Math.abs((order.total_price ?? 0) - linesTotal) > 0.005 && (
+              <p className="mt-1 text-xs font-semibold text-ink-muted print:hidden">
+                differs from order total {formatRub(order.total_price)} ·{' '}
+                <button
+                  onClick={() =>
+                    updateOrder.mutate({ id: id!, values: { total_price: linesTotal } }, { onSuccess: invalidateDetail })
+                  }
+                  disabled={updateOrder.isPending}
+                  className="tap font-bold text-brand underline decoration-dotted disabled:opacity-50"
+                >
+                  use items total
+                </button>
+              </p>
+            )}
+          </div>
         )}
       </section>
 
       <div className="print:hidden">
         <HeaderForm
-          key={`${order.id}-${order.created_at}`}
+          key={`${order.id}-${order.total_price}`}
           order={order}
           pending={updateOrder.isPending}
           onSave={(values) => updateOrder.mutate({ id: id!, values }, { onSuccess: invalidateDetail })}

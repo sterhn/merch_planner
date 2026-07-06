@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Printer, AlertTriangle, CalendarClock, Loader2 } from 'lucide-react'
 import type { Collect } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatDate, formatRub } from '../lib/format'
+import { formatDate, formatRub, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
@@ -52,7 +52,7 @@ export default function Collects() {
     else if (editing) update.mutate({ id: editing.id, values }, { onSuccess: () => setEditing(null) })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayISO()
 
   return (
     <div>

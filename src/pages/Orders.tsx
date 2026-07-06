@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -40,7 +40,10 @@ export default function Orders() {
   const remove = useDelete('orders')
 
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('to_send')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filterParam = searchParams.get('filter')
+  const filter: Filter = FILTERS.some((f) => f.key === filterParam) ? (filterParam as Filter) : 'to_send'
+  const setFilter = (f: Filter) => setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
   const [deliveryFilter, setDeliveryFilter] = useState('')
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
