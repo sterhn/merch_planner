@@ -5,7 +5,7 @@ import { haptic } from '../lib/haptics'
 export interface SwipeAction {
   icon: LucideIcon
   label: string
-  /** Background classes for the revealed area, e.g. 'bg-emerald-500' */
+  /** Background classes for the revealed area, e.g. 'bg-good' */
   className: string
   onAction: () => void
 }

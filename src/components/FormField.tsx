@@ -28,7 +28,7 @@ export function PrimaryButton({
         haptic()
         onClick?.(e)
       }}
-      className="tap h-12 w-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card disabled:opacity-50 disabled:saturate-50"
+      className="tap h-12 w-full rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card disabled:opacity-50 disabled:saturate-50"
     >
       {children}
     </button>

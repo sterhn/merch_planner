@@ -26,7 +26,7 @@ export default function Layout() {
     <div className="min-h-dvh md:flex">
       {/* Sidebar on desktop */}
       <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-line md:bg-surface">
-        <div className="bg-gradient-to-r from-violet-600 to-fuchsia-500 bg-clip-text px-5 py-5 font-display text-base font-bold text-transparent">
+        <div className="px-5 py-5 font-display text-base font-bold text-brand">
           Merch Planner
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -76,7 +76,7 @@ export default function Layout() {
                 <span
                   className={`flex items-center justify-center rounded-full px-4 py-1 transition-all duration-200 ${
                     isActive
-                      ? 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-card'
+                      ? 'bg-brand text-white shadow-card'
                       : 'text-ink-faint'
                   }`}
                 >

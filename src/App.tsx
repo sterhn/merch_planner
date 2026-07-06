@@ -20,7 +20,7 @@ export default function App() {
     return (
       <div className="flex min-h-dvh items-center justify-center p-6 text-center text-sm text-ink-muted">
         <div className="flex flex-col items-center gap-3">
-          <span className="flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15">
+          <span className="flex size-16 items-center justify-center rounded-full bg-brand/10">
             <Settings size={28} className="text-brand" />
           </span>
           <p className="font-bold">Supabase is not configured.</p>

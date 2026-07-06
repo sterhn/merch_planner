@@ -19,10 +19,10 @@ export default function Login() {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page p-6">
-      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-violet-500/30 blur-3xl" aria-hidden />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 size-72 rounded-full bg-fuchsia-400/20 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-brand/15 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 size-72 rounded-full bg-accent/10 blur-3xl" aria-hidden />
       <form onSubmit={handleSubmit} className="relative w-full max-w-sm animate-pop rounded-sheet bg-surface p-6 shadow-card">
-        <h1 className="mb-1 bg-gradient-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-center font-display text-xl text-transparent">
+        <h1 className="mb-1 text-center font-display text-xl text-brand">
           Merch Planner
         </h1>
         <p className="mb-6 text-center text-sm text-ink-muted">Sign in to your tracker</p>

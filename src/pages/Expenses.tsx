@@ -89,7 +89,7 @@ export default function Expenses() {
             haptic()
             setAdding(true)
           }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
         >
           <Plus size={16} strokeWidth={3} />
           Add expense
@@ -149,7 +149,7 @@ export default function Expenses() {
                   right={{
                     icon: Trash2,
                     label: 'delete',
-                    className: 'bg-rose-500',
+                    className: 'bg-bad',
                     onAction: () => confirmDelete(row.id),
                   }}
                 >

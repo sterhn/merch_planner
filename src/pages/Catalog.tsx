@@ -18,7 +18,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
       onClick={onClick}
       className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
         active
-          ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card'
+          ? 'bg-brand text-white shadow-card'
           : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
       }`}
     >
@@ -224,7 +224,7 @@ export default function Catalog() {
             haptic()
             openEditor('new')
           }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
         >
           <Plus size={16} strokeWidth={3} />
           Add item

@@ -63,7 +63,7 @@ export default function Collects() {
             haptic()
             openEditor('new')
           }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
         >
           <Plus size={16} strokeWidth={3} />
           Add collect
@@ -136,7 +136,7 @@ export default function Collects() {
           <label className="mb-4 flex min-h-11 items-center gap-2.5 text-sm font-semibold">
             <input
               type="checkbox"
-              className="size-5 accent-violet-600"
+              className="size-5 accent-brand"
               checked={form.paid}
               onChange={(e) => setForm({ ...form, paid: e.target.checked })}
             />

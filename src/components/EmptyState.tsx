@@ -16,7 +16,7 @@ export default function EmptyState({
   return (
     <div className="flex flex-col items-center gap-3 py-12 text-center">
       {Icon && (
-        <div className="flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15">
+        <div className="flex size-16 items-center justify-center rounded-full bg-brand/10">
           <Icon size={28} className={`text-brand ${spin ? 'animate-spin' : ''}`} />
         </div>
       )}

@@ -141,7 +141,7 @@ export default function Shelf() {
             haptic()
             openEditor('new')
           }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
         >
           <Plus size={16} strokeWidth={3} />
           Add position

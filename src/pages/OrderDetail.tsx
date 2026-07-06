@@ -63,7 +63,7 @@ function CatalogPicker({ catalog, value, onSelect }: {
               key={t ?? '__all_types__'}
               type="button"
               onClick={() => setTypeFilter(t)}
-              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${typeFilter === t ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white' : 'bg-surface-2 text-ink-muted'}`}
+              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${typeFilter === t ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted'}`}
             >
               {t ?? 'All types'}
             </button>
@@ -77,7 +77,7 @@ function CatalogPicker({ catalog, value, onSelect }: {
               key={f ?? '__all__'}
               type="button"
               onClick={() => setFandomFilter(f)}
-              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${fandomFilter === f ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-white' : 'bg-surface-2 text-ink-muted'}`}
+              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${fandomFilter === f ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted'}`}
             >
               {f ?? 'All fandoms'}
             </button>

@@ -23,7 +23,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 function OrderStatus({ paid, sent, delivered }: { paid: boolean; sent: boolean; delivered: boolean }) {
   if (delivered) return <span className="rounded-full bg-good/15 px-2.5 py-0.5 text-xs font-bold text-good">Delivered</span>
-  if (sent) return <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-bold text-sky-500">Shipped</span>
+  if (sent) return <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-bold text-accent">Shipped</span>
   if (paid) return <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">Awaiting shipment</span>
   return <span className="rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-bold text-bad">Unpaid</span>
 }
@@ -219,7 +219,7 @@ export default function Orders() {
               haptic()
               setAdding(true)
             }}
-            className="tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 text-sm font-bold text-white shadow-card"
+            className="tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
           >
             <Plus size={16} strokeWidth={3} />
             New order
@@ -247,7 +247,7 @@ export default function Orders() {
             }}
             className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
               filter === f.key
-                ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card'
+                ? 'bg-brand text-white shadow-card'
                 : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
             }`}
           >
@@ -293,21 +293,21 @@ export default function Orders() {
             ? {
                 icon: BadgeCheck,
                 label: 'paid',
-                className: 'bg-emerald-500',
+                className: 'bg-good',
                 onAction: () => update.mutate({ id: o.id, values: { paid: true } }),
               }
             : !o.sent
               ? {
                   icon: Send,
                   label: 'sent',
-                  className: 'bg-sky-500',
+                  className: 'bg-accent',
                   onAction: () => update.mutate({ id: o.id, values: { sent: true } }),
                 }
               : !o.delivered
                 ? {
                     icon: PackageCheck,
                     label: 'delivered',
-                    className: 'bg-violet-500',
+                    className: 'bg-brand',
                     onAction: () => update.mutate({ id: o.id, values: { delivered: true } }),
                   }
                 : undefined
@@ -317,7 +317,7 @@ export default function Orders() {
               left={{
                 icon: Trash2,
                 label: 'delete',
-                className: 'bg-rose-500',
+                className: 'bg-bad',
                 onAction: () => {
                   if (confirm('Delete this order?')) remove.mutate(o.id)
                 },
