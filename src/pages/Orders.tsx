@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, PackageOpen, BadgeCheck, Trash2, Loader2, Printer } from 'lucide-react'
+import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
@@ -11,18 +11,19 @@ import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
-type Filter = 'all' | 'unpaid' | 'to_send' | 'done'
+type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'to_send', label: 'To send' },
+  { key: 'sent', label: 'Sent' },
   { key: 'unpaid', label: 'Unpaid' },
   { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
 
 function OrderStatus({ paid, sent, delivered }: { paid: boolean; sent: boolean; delivered: boolean }) {
-  if (delivered) return <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">Delivered</span>
-  if (sent) return <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-700">Shipped</span>
+  if (delivered) return <span className="rounded-full bg-good/15 px-2.5 py-0.5 text-xs font-bold text-good">Delivered</span>
+  if (sent) return <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-bold text-sky-500">Shipped</span>
   if (paid) return <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">Awaiting shipment</span>
   return <span className="rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-bold text-bad">Unpaid</span>
 }
@@ -34,7 +35,8 @@ export default function Orders() {
     select: '*, order_items(item:item_id(image_url))',
   })
   const insert = useInsert<Order>('orders')
-  const update = useUpdate<Order>('orders')
+  // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
+  const update = useUpdate<Order>('orders', ['items'])
   const remove = useDelete('orders')
 
   const [search, setSearch] = useState('')
@@ -56,6 +58,7 @@ export default function Orders() {
       if (q && !`${o.telegram ?? ''} ${o.customer_email ?? ''}`.toLowerCase().includes(q)) return false
       if (filter === 'unpaid' && o.paid) return false
       if (filter === 'to_send' && !(o.paid && !o.sent)) return false
+      if (filter === 'sent' && !(o.paid && o.sent && !o.delivered)) return false
       if (filter === 'done' && !o.delivered) return false
       if (deliveryFilter && o.delivery_method !== deliveryFilter) return false
       return true
@@ -136,7 +139,8 @@ export default function Orders() {
         })
         .join('')
 
-      const filterLabel = filter === 'to_send' ? 'To send' : filter === 'unpaid' ? 'Unpaid' : filter === 'done' ? 'Done' : 'All'
+      const filterLabel =
+        filter === 'to_send' ? 'To send' : filter === 'sent' ? 'Sent' : filter === 'unpaid' ? 'Unpaid' : filter === 'done' ? 'Done' : 'All'
       const deliveryLabel = deliveryFilter ? ` · ${deliveryFilter}` : ''
 
       const html = `<!DOCTYPE html>
@@ -274,7 +278,7 @@ export default function Orders() {
       {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
       {isError && <EmptyState icon={PackageOpen} message="Failed to load orders." onRetry={() => refetch()} />}
       {!isLoading && !isError && filtered.length === 0 && (
-        <EmptyState icon={PackageOpen} message="No orders found." hint="Swipe a row to mark paid or delete." />
+        <EmptyState icon={PackageOpen} message="No orders found." hint="Swipe left to advance status, right to delete." />
       )}
 
       <div className="space-y-2">
@@ -282,16 +286,32 @@ export default function Orders() {
           const photos = [...new Set(
             (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
           )].slice(0, 6)
+          const advance = !o.paid
+            ? {
+                icon: BadgeCheck,
+                label: 'paid',
+                className: 'bg-emerald-500',
+                onAction: () => update.mutate({ id: o.id, values: { paid: true } }),
+              }
+            : !o.sent
+              ? {
+                  icon: Send,
+                  label: 'sent',
+                  className: 'bg-sky-500',
+                  onAction: () => update.mutate({ id: o.id, values: { sent: true } }),
+                }
+              : !o.delivered
+                ? {
+                    icon: PackageCheck,
+                    label: 'delivered',
+                    className: 'bg-violet-500',
+                    onAction: () => update.mutate({ id: o.id, values: { delivered: true } }),
+                  }
+                : undefined
           return (
             <SwipeableRow
               key={o.id}
               left={{
-                icon: BadgeCheck,
-                label: o.paid ? 'unpaid' : 'paid',
-                className: 'bg-emerald-500',
-                onAction: () => update.mutate({ id: o.id, values: { paid: !o.paid } }),
-              }}
-              right={{
                 icon: Trash2,
                 label: 'delete',
                 className: 'bg-rose-500',
@@ -299,6 +319,7 @@ export default function Orders() {
                   if (confirm('Delete this order?')) remove.mutate(o.id)
                 },
               }}
+              right={advance}
             >
               <Link
                 to={`/orders/${o.id}`}
