@@ -11,6 +11,45 @@ import { haptic } from '../lib/haptics'
 
 const EMPTY = { name: '', price: '', month: '', qty_sent: '', qty_sold: '' }
 
+function ShelfRow({ r, onClick }: { r: ShelfItem; onClick: () => void }) {
+  const sold = r.qty_sold ?? 0
+  const sent = r.qty_sent ?? 0
+  const remaining = r.qty_remaining ?? 0
+  const isInactive = sold === 0 && sent === 0
+  const sellRate = sent > 0 ? Math.round((sold / sent) * 100) : 0
+
+  return (
+    <button
+      onClick={onClick}
+      className={`tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10 ${isInactive ? 'opacity-50' : ''}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-bold ${isInactive ? 'text-ink-faint' : 'text-ink'}`}>{r.name}</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="text-xs text-ink-faint">{r.month ?? '—'}</p>
+          {sent > 0 && (
+            <div className="flex items-center gap-1">
+              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
+                <div className="h-full rounded-full bg-good" style={{ width: `${sellRate}%` }} />
+              </div>
+              <span className="text-[11px] text-ink-faint">{sellRate}%</span>
+            </div>
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-ink-faint">
+          sent {sent} ·{' '}
+          <span className={sold > 0 ? 'font-bold text-good' : 'text-ink-faint'}>sold {sold}</span>
+          {' '}· left {remaining}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="font-display text-sm">{formatRub(r.price)}</p>
+        {(r.income ?? 0) > 0 && <p className="text-xs font-bold text-good">{formatRub(r.income)}</p>}
+      </div>
+    </button>
+  )
+}
+
 export default function Shelf() {
   const { data: rows, isLoading, isError, refetch } = useList<ShelfItem>('shelf_items', { orderBy: 'name' })
   const insert = useInsert<ShelfItem>('shelf_items')
@@ -123,23 +162,23 @@ export default function Shelf() {
       </div>
 
       <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-card bg-gradient-to-br from-sky-500 to-indigo-500 p-3 text-white shadow-card">
-          <p className="whitespace-nowrap font-display text-base">
+        <div className="rounded-card border-l-4 border-l-brand bg-surface p-3 shadow-card">
+          <p className="font-display text-base text-brand">
             <AnimatedNumber value={totals.sent} />
           </p>
-          <p className="text-xs font-semibold text-white/80">sent</p>
+          <p className="text-xs text-ink-faint">sent</p>
         </div>
-        <div className="rounded-card bg-gradient-to-br from-violet-600 to-fuchsia-500 p-3 text-white shadow-card">
-          <p className="whitespace-nowrap font-display text-base">
+        <div className="rounded-card border-l-4 border-l-good bg-surface p-3 shadow-card">
+          <p className="font-display text-base text-good">
             <AnimatedNumber value={totals.sold} />
           </p>
-          <p className="text-xs font-semibold text-white/80">sold</p>
+          <p className="text-xs text-ink-faint">sold</p>
         </div>
-        <div className="rounded-card bg-gradient-to-br from-emerald-500 to-teal-500 p-3 text-white shadow-card">
-          <p className="whitespace-nowrap font-display text-base">
+        <div className="rounded-card border-l-4 border-l-good bg-surface p-3 shadow-card">
+          <p className="font-display text-base text-good">
             <AnimatedNumber value={totals.income} format={formatRub} />
           </p>
-          <p className="text-xs font-semibold text-white/80">income</p>
+          <p className="text-xs text-ink-faint">income</p>
         </div>
       </div>
 
@@ -149,22 +188,7 @@ export default function Shelf() {
 
       <div className="space-y-2">
         {filtered.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => openEditor(r)}
-            className="tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold">{r.name}</p>
-              <p className="text-xs text-ink-muted">
-                {r.month ?? '—'} · sent {r.qty_sent ?? 0} · sold {r.qty_sold ?? 0} · left {r.qty_remaining ?? 0}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="font-display text-sm">{formatRub(r.price)}</p>
-              <p className="text-xs font-bold text-good">{formatRub(r.income)}</p>
-            </div>
-          </button>
+          <ShelfRow key={r.id} r={r} onClick={() => openEditor(r)} />
         ))}
       </div>
 

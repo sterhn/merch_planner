@@ -82,9 +82,7 @@ export default function Layout() {
                 >
                   <n.icon size={19} />
                 </span>
-                <span
-                  className={`text-[10px] font-bold ${isActive ? 'text-brand' : 'text-ink-faint'}`}
-                >
+                <span className={`text-[10px] font-bold ${isActive ? 'text-brand' : 'text-ink-faint'}`}>
                   {n.label}
                 </span>
               </>

@@ -1,47 +1,60 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  TrendingUp,
-  Store,
-  Wallet,
-  Sparkles,
-  ChevronRight,
-  CalendarClock,
-  type LucideIcon,
-} from 'lucide-react'
-import type { Collect, ExpenseFeedRow, Order, ShelfItem } from '../lib/types'
+import { CalendarClock } from 'lucide-react'
+import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import AnimatedNumber from '../components/AnimatedNumber'
 
-function StatTile({
-  label,
-  value,
-  gradient,
-  icon: Icon,
-  index,
-}: {
-  label: string
-  value: number
-  gradient: string
-  icon: LucideIcon
-  index: number
+function HeroCard({ value, isPositive }: { value: number; isPositive: boolean }) {
+  return (
+    <div className="animate-pop rounded-card bg-brand-strong p-5 shadow-card" style={{ animationDelay: '0ms' }}>
+      <p className="text-xs font-semibold uppercase tracking-widest text-white/60">Net profit</p>
+      <p className="mt-1 font-display text-3xl text-white">
+        <AnimatedNumber value={value} format={formatRub} />
+      </p>
+      {!isPositive && (
+        <span className="mt-2 inline-block rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white">
+          deficit
+        </span>
+      )}
+    </div>
+  )
+}
+
+function MetricCard({ label, value, tone, index }: {
+  label: string; value: number; tone?: 'success' | 'danger' | 'brand'; index: number
 }) {
+  const border = tone === 'success' ? 'border-l-good' : tone === 'danger' ? 'border-l-bad' : 'border-l-brand'
+  const text = tone === 'success' ? 'text-good' : tone === 'danger' ? 'text-bad' : 'text-brand'
   return (
     <div
-      className={`animate-pop rounded-card bg-gradient-to-br p-4 text-white shadow-card ${gradient}`}
-      style={{ animationDelay: `${index * 60}ms` }}
+      className={`animate-pop rounded-card border-l-4 ${border} bg-surface p-3 shadow-card`}
+      style={{ animationDelay: `${(index + 1) * 60}ms` }}
     >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="min-w-0 whitespace-nowrap font-display text-lg leading-tight">
-          <AnimatedNumber value={value} format={formatRub} />
-        </p>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/20">
-          <Icon size={15} />
-        </span>
-      </div>
-      <p className="text-xs font-semibold text-white/80">{label}</p>
+      <p className={`font-display text-base leading-tight ${text}`}>
+        <AnimatedNumber value={value} format={formatRub} />
+      </p>
+      <p className="mt-0.5 text-[11px] text-ink-faint">{label}</p>
     </div>
+  )
+}
+
+function ActionCard({ label, count, to, tone, index }: {
+  label: string; count: number; to: string; tone: 'danger' | 'brand'; index: number
+}) {
+  const badge = tone === 'danger' ? 'bg-bad text-white' : 'bg-brand text-white'
+  return (
+    <Link
+      to={to}
+      className="animate-pop tap flex items-center gap-3 rounded-card bg-surface p-3.5 shadow-card hover:bg-surface-2"
+      style={{ animationDelay: `${(index + 4) * 60}ms` }}
+    >
+      <span className={`shrink-0 rounded-xl px-3 py-1.5 font-display text-lg font-bold ${badge}`}>
+        <AnimatedNumber value={count} />
+      </span>
+      <p className="text-sm font-semibold text-ink-muted">{label}</p>
+    </Link>
   )
 }
 
@@ -50,6 +63,7 @@ export default function Dashboard() {
   const { data: shelf } = useList<ShelfItem>('shelf_items')
   const { data: expenses } = useList<ExpenseFeedRow>('expense_feed')
   const { data: collects } = useList<Collect>('collects')
+  const { data: items } = useList<Item>('items')
 
   const stats = useMemo(() => {
     const orderRevenue = (orders ?? []).filter((o) => o.paid).reduce((s, o) => s + (o.total_price ?? 0), 0)
@@ -76,95 +90,121 @@ export default function Dashboard() {
       .map((c) => ({ ...c, urgent: c.deadline! <= soon }))
   }, [collects])
 
+  const topSeller = useMemo(
+    () => [...(shelf ?? [])].sort((a, b) => (b.qty_sold ?? 0) - (a.qty_sold ?? 0)).find((r) => (r.qty_sold ?? 0) > 0) ?? null,
+    [shelf],
+  )
+
+  const lowStock = useMemo(
+    () => (items ?? []).filter((i) => i.stock_qty !== null && i.stock_qty <= 2).slice(0, 4),
+    [items],
+  )
+
+  const recentOrders = useMemo(() => (orders ?? []).slice(0, 3), [orders])
+
+  const hasActions = stats.unpaid > 0 || stats.toSend > 0
+
   return (
     <div>
       <h1 className="mb-4 font-display text-2xl">Dashboard</h1>
 
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <StatTile
-          index={0}
-          label="Order revenue (paid)"
-          value={stats.orderRevenue}
-          gradient="from-emerald-500 to-teal-500"
-          icon={TrendingUp}
-        />
-        <StatTile
-          index={1}
-          label="Shelf income"
-          value={stats.shelfIncome}
-          gradient="from-sky-500 to-indigo-500"
-          icon={Store}
-        />
-        <StatTile
-          index={2}
-          label="Expenses"
-          value={stats.totalExpenses}
-          gradient="from-rose-500 to-orange-400"
-          icon={Wallet}
-        />
-        <StatTile
-          index={3}
-          label="Net"
-          value={stats.net}
-          gradient={stats.net >= 0 ? 'from-violet-600 to-fuchsia-500' : 'from-rose-500 to-orange-400'}
-          icon={Sparkles}
-        />
+      <div className="mb-3 flex flex-col gap-2">
+        <HeroCard value={stats.net} isPositive={stats.net >= 0} />
+        <div className="grid grid-cols-3 gap-2">
+          <MetricCard label="Revenue" value={stats.orderRevenue} tone="success" index={0} />
+          <MetricCard label="Expenses" value={stats.totalExpenses} tone="danger" index={1} />
+          <MetricCard label="Shelf" value={stats.shelfIncome} tone="brand" index={2} />
+        </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <Link
-          to="/orders"
-          className="tap animate-pop rounded-card bg-surface p-4 shadow-card"
-          style={{ animationDelay: '240ms' }}
-        >
-          <div className="flex items-center justify-between">
-            <p className="font-display text-2xl text-brand">
-              <AnimatedNumber value={stats.unpaid} />
+      {hasActions && (
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          {stats.unpaid > 0 && <ActionCard label="unpaid orders" count={stats.unpaid} to="/orders" tone="danger" index={0} />}
+          {stats.toSend > 0 && <ActionCard label="paid, not sent" count={stats.toSend} to="/orders" tone="brand" index={1} />}
+        </div>
+      )}
+
+      <div className="mb-4 space-y-2">
+        {topSeller && (
+          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '420ms' }}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-faint">Top seller</p>
+            <p className="truncate text-sm font-bold">{topSeller.name}</p>
+            <p className="text-xs text-ink-muted">
+              <span className="font-bold text-good">{topSeller.qty_sold} sold</span> · {formatRub(topSeller.income)}
             </p>
-            <ChevronRight size={18} className="text-ink-faint" />
           </div>
-          <p className="text-xs font-semibold text-ink-muted">unpaid orders</p>
-        </Link>
-        <Link
-          to="/orders"
-          className="tap animate-pop rounded-card bg-surface p-4 shadow-card"
-          style={{ animationDelay: '300ms' }}
-        >
-          <div className="flex items-center justify-between">
-            <p className="font-display text-2xl text-brand">
-              <AnimatedNumber value={stats.toSend} />
-            </p>
-            <ChevronRight size={18} className="text-ink-faint" />
+        )}
+
+        {lowStock.length > 0 && (
+          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '480ms' }}>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-faint">Low stock alert</p>
+            <div className="space-y-1.5">
+              {lowStock.map((i) => (
+                <div key={i.id} className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-sm">{i.name}</p>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
+                      (i.stock_qty ?? 0) === 0 ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
+                    }`}
+                  >
+                    {i.stock_qty} left
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="text-xs font-semibold text-ink-muted">paid, not sent</p>
-        </Link>
+        )}
+
+        {recentOrders.length > 0 && (
+          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '540ms' }}>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ink-faint">Recent orders</p>
+              <Link to="/orders" className="text-xs font-bold text-brand">View all</Link>
+            </div>
+            <div className="divide-y divide-line">
+              {recentOrders.map((o) => (
+                <Link key={o.id} to={`/orders/${o.id}`} className="tap flex items-center justify-between py-2">
+                  <p className="min-w-0 truncate text-sm">{o.telegram || o.customer_email || 'no contact'}</p>
+                  <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <section>
         <h2 className="mb-2 text-sm font-bold text-ink-muted">Upcoming collect deadlines</h2>
-        {upcoming.length === 0 && <p className="text-sm text-ink-faint">No upcoming deadlines.</p>}
-        <div className="space-y-2">
-          {upcoming.map((c) => (
-            <Link
-              key={c.id}
-              to="/collects"
-              className="tap flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold">{c.name}</p>
-                <p className="text-xs text-ink-muted">{c.vendor}</p>
-              </div>
-              <span
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
-                  c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/20 text-ink'
-                }`}
+        {upcoming.length === 0 ? (
+          <div className="animate-pop rounded-card bg-surface p-8 text-center shadow-card">
+            <p className="text-3xl leading-none">✧</p>
+            <p className="mt-2 text-sm font-bold text-ink">All caught up!</p>
+            <p className="text-xs text-ink-faint">No upcoming deadlines.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {upcoming.map((c) => (
+              <Link
+                key={c.id}
+                to="/collects"
+                className="tap flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
               >
-                <CalendarClock size={13} />
-                {formatDate(c.deadline)}
-              </span>
-            </Link>
-          ))}
-        </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">{c.name}</p>
+                  <p className="text-xs text-ink-muted">{c.vendor}</p>
+                </div>
+                <span
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
+                    c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/20 text-ink'
+                  }`}
+                >
+                  <CalendarClock size={13} />
+                  {formatDate(c.deadline)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   )

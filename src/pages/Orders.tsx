@@ -6,7 +6,6 @@ import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import EmptyState from '../components/EmptyState'
-import StatusBadge from '../components/StatusBadge'
 import Modal from '../components/Modal'
 import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
@@ -20,6 +19,13 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
+
+function OrderStatus({ paid, sent, delivered }: { paid: boolean; sent: boolean; delivered: boolean }) {
+  if (delivered) return <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">Delivered</span>
+  if (sent) return <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-700">Shipped</span>
+  if (paid) return <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">Awaiting shipment</span>
+  return <span className="rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-bold text-bad">Unpaid</span>
+}
 
 export default function Orders() {
   const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
@@ -232,10 +238,10 @@ export default function Orders() {
               haptic(5)
               setFilter(f.key)
             }}
-            className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold ${
+            className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
               filter === f.key
                 ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card'
-                : 'bg-surface text-ink-muted shadow-card'
+                : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
             }`}
           >
             {f.label}
@@ -311,10 +317,8 @@ export default function Orders() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{o.telegram || o.customer_email || 'no contact'}</p>
                   <p className="truncate text-xs text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>
-                  <div className="mt-1.5 flex gap-1">
-                    <StatusBadge on={o.paid} label="paid" />
-                    <StatusBadge on={o.sent} label="sent" />
-                    <StatusBadge on={o.delivered} label="delivered" />
+                  <div className="mt-1.5">
+                    <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
                   </div>
                 </div>
                 <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>

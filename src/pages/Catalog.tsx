@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Tags, ImageOff, X, Loader2 } from 'lucide-react'
+import { Plus, Search, Tags, Loader2 } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage } from '../lib/images'
@@ -16,7 +16,11 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold ${active ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card' : 'bg-surface text-ink-muted shadow-card'}`}
+      className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
+        active
+          ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-card'
+          : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
+      }`}
     >
       {children}
     </button>
@@ -55,6 +59,18 @@ function ComboSelect({ value, onChange, options, placeholder }: {
           placeholder={placeholder ?? 'Type new value…'}
         />
       )}
+    </div>
+  )
+}
+
+function ItemImage({ src, type }: { src: string | null; type: string | null }) {
+  if (src) {
+    return <img src={src} alt="" className="size-16 shrink-0 rounded-xl object-cover" loading="lazy" />
+  }
+  const initial = (type ?? '★').charAt(0).toUpperCase()
+  return (
+    <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-brand/10 font-display text-xl font-bold text-brand/50">
+      {initial}
     </div>
   )
 }
@@ -250,13 +266,7 @@ export default function Catalog() {
             onClick={() => openEditor(item)}
             className="tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10"
           >
-            {item.image_url ? (
-              <img src={item.image_url} alt="" className="size-16 shrink-0 rounded-xl object-cover" loading="lazy" />
-            ) : (
-              <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-faint">
-                <ImageOff size={20} />
-              </span>
-            )}
+            <ItemImage src={item.image_url} type={item.type} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold">{item.name}</p>
               <p className="truncate text-xs text-ink-muted">
@@ -270,7 +280,9 @@ export default function Catalog() {
             </div>
             <div className="shrink-0 text-right">
               <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
-              <p className="text-xs text-ink-muted">stock: {item.stock_qty ?? 0}</p>
+              <p className={`text-xs font-semibold ${(item.stock_qty ?? 0) <= 2 ? 'text-bad' : 'text-ink-faint'}`}>
+                stock: {item.stock_qty ?? 0}
+              </p>
             </div>
           </button>
         ))}
@@ -330,7 +342,7 @@ export default function Catalog() {
                   className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
                   aria-label="Remove photo"
                 >
-                  <X size={16} />
+                  ✕
                 </button>
               )}
             </div>
