@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, PackageSearch, Plus, Printer, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Loader2, PackageSearch, Plus, Printer, Search, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -217,6 +217,10 @@ export default function OrderDetail() {
 
   const [addingLine, setAddingLine] = useState(false)
   const [lineForm, setLineForm] = useState({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+  const [importing, setImporting] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importError, setImportError] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
 
   const itemNames = useMemo(() => {
     const map = new Map<string, Item>()
@@ -283,6 +287,43 @@ export default function OrderDetail() {
         },
       },
     )
+  }
+
+  async function handleImport(e: React.FormEvent) {
+    e.preventDefault()
+    setImportError('')
+
+    let items: { id?: string; name?: string; type?: string; qty?: number; price?: number | null }[]
+    try {
+      const raw = importText.trim().replace(/^import:/, '')
+      items = JSON.parse(raw)
+      if (!Array.isArray(items) || items.length === 0) throw new Error('Empty array')
+    } catch {
+      setImportError('Could not parse. Paste the import:[...] block from the order page.')
+      return
+    }
+
+    const rows = items.map((item) => ({
+      order_id: id!,
+      item_id: item.id || null,
+      name_text: item.name || null,
+      category: item.type || null,
+      qty: item.qty ?? 1,
+      unit_price: item.price ?? null,
+    }))
+
+    setImportBusy(true)
+    try {
+      const { error } = await supabase.from('order_items').insert(rows)
+      if (error) throw error
+      qc.invalidateQueries({ queryKey: ['order_items', id] })
+      setImporting(false)
+      setImportText('')
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setImportBusy(false)
+    }
   }
 
   function printOrder() {
@@ -400,13 +441,22 @@ export default function OrderDetail() {
       <section className="mb-6 rounded-card bg-surface p-4 shadow-card">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-display text-sm text-ink-muted">Items</h2>
-          <button
-            onClick={() => setAddingLine(true)}
-            className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand print:hidden"
-          >
-            <Plus size={15} strokeWidth={3} />
-            Add item
-          </button>
+          <div className="flex items-center gap-1 print:hidden">
+            <button
+              onClick={() => setImporting(true)}
+              className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-ink-muted"
+            >
+              <ClipboardPaste size={15} />
+              Import
+            </button>
+            <button
+              onClick={() => setAddingLine(true)}
+              className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand"
+            >
+              <Plus size={15} strokeWidth={3} />
+              Add item
+            </button>
+          </div>
         </div>
         {(lines ?? []).length === 0 && <p className="py-3 text-sm text-ink-faint">No items.</p>}
         <ul className="divide-y divide-line">
@@ -516,6 +566,24 @@ export default function OrderDetail() {
           </div>
           <PrimaryButton type="submit" disabled={insertLine.isPending}>
             Add
+          </PrimaryButton>
+        </form>
+      </Modal>
+
+      <Modal title="Import items" open={importing} onClose={() => { setImporting(false); setImportError('') }}>
+        <form onSubmit={handleImport}>
+          <Field label="Paste order code">
+            <textarea
+              className={textareaClass}
+              rows={5}
+              placeholder='import:[{"id":"...","name":"...","qty":1,"price":650}]'
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+            />
+          </Field>
+          {importError && <p className="mb-3 text-sm font-semibold text-bad">{importError}</p>}
+          <PrimaryButton type="submit" disabled={importBusy || !importText.trim()}>
+            {importBusy ? 'Importing…' : 'Import'}
           </PrimaryButton>
         </form>
       </Modal>

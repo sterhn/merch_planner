@@ -24,8 +24,9 @@ export function useInsert<T extends object>(table: string, invalidate: string[] 
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (values: Partial<T>) => {
-      const { error } = await supabase.from(table).insert(values as never)
+      const { data, error } = await supabase.from(table).insert(values as never).select().single()
       if (error) throw error
+      return data as T
     },
     onSuccess: () => {
       for (const key of [table, ...invalidate]) qc.invalidateQueries({ queryKey: [key] })
