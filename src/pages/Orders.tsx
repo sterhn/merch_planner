@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -34,6 +34,7 @@ export default function Orders() {
     ascending: false,
     select: '*, order_items(item:item_id(image_url))',
   })
+  const navigate = useNavigate()
   const insert = useInsert<Order>('orders')
   // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
   const update = useUpdate<Order>('orders', ['items'])
@@ -192,9 +193,10 @@ export default function Orders() {
     insert.mutate(
       { telegram: form.telegram || null, customer_email: form.customer_email || null },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setAdding(false)
           setForm({ telegram: '', customer_email: '' })
+          navigate(`/orders/${created.id}`)
         },
       },
     )
