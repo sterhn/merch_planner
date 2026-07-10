@@ -5,11 +5,6 @@
   "start_url": "/merch_planner/",
   "scope": "/merch_planner/",
   "display": "standalone",
-  "share_target": {
-    "action": "/merch_planner/",
-    "method": "GET",
-    "params": { "title": "title", "text": "text", "url": "url" }
-  },
   "background_color": "#f9fafb",
   "theme_color": "#7c3aed",
   "icons": [

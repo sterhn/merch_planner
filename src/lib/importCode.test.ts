@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { importedOrderRows, importedTotal, parseImportCode } from './importCode'
+import { importedOrderRows, parseImportCode } from './importCode'
 
 const CODE = 'import:[{"id":"a1","name":"брелок браун","type":"брелок","qty":2,"price":650},{"id":"b2","name":"значок","type":null,"qty":1,"price":null}]'
 
@@ -56,15 +56,5 @@ describe('importedOrderRows', () => {
     })
     expect(rows[1].item_id).toBe('b2')
     expect(rows[1].unit_price).toBeNull()
-  })
-})
-
-describe('importedTotal', () => {
-  it('sums priced lines, defaulting qty to 1', () => {
-    expect(importedTotal([{ price: 650, qty: 2 }, { price: 200 }, { price: null }])).toBe(1500)
-  })
-
-  it('is null when nothing has a price', () => {
-    expect(importedTotal([{ name: 'x' }])).toBeNull()
   })
 })

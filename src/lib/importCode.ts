@@ -1,10 +1,10 @@
 import type { OrderItem } from './types'
 
-// The store page's cart share ends with a machine-readable tail:
+// The store page's cart message ends with a machine-readable tail:
 //   Привет! Хочу заказать: … ---
 //   import:[{"id":"…","name":"…","type":"…","qty":1,"price":650}]
-// This parser accepts the whole message, just the import:[...] tail, or a bare
-// JSON array, so it works for both the Import modal and the PWA share target.
+// This parser accepts the whole pasted message, just the import:[...] tail,
+// or a bare JSON array.
 
 export interface ImportedLine {
   id?: string
@@ -45,11 +45,4 @@ export function importedOrderRows(orderId: string, lines: ImportedLine[]): Parti
     qty: line.qty ?? 1,
     unit_price: line.price ?? null,
   }))
-}
-
-/** Sum of the shared cart, or null when no line has a price. */
-export function importedTotal(lines: ImportedLine[]): number | null {
-  const priced = lines.filter((l) => l.price != null)
-  if (priced.length === 0) return null
-  return priced.reduce((s, l) => s + l.price! * (l.qty ?? 1), 0)
 }
