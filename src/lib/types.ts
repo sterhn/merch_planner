@@ -74,6 +74,7 @@ export interface CollectItem {
   item_id: string | null
   name_text: string | null
   qty: number
+  print_cost: number | null
   created_at: string
 }
 

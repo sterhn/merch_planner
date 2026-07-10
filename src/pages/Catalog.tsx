@@ -8,6 +8,7 @@ import { buildableCount, groupBundles, type BundleComponent } from '../lib/bundl
 import { supabase } from '../lib/supabase'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
+import CatalogPicker from '../components/CatalogPicker'
 import EmptyState from '../components/EmptyState'
 import FilterChip from '../components/FilterChip'
 import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
@@ -126,6 +127,8 @@ export default function Catalog() {
   const [fandomFilter, setFandomFilter] = useState<string | null>(null)
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [viewing, setViewing] = useState<Item | null>(null)
+  // Index of the bundle row whose component picker modal is open
+  const [pickerFor, setPickerFor] = useState<number | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
   const [itemPhoto, setItemPhoto] = useState<File | null>(null)
@@ -472,18 +475,18 @@ export default function Catalog() {
             <div className="space-y-2">
               {bundleRows.map((row, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <select
-                    className={`${inputClass} min-w-0 flex-1`}
-                    value={row.component_id}
-                    onChange={(e) =>
-                      setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, component_id: e.target.value } : r)))
-                    }
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic()
+                      setPickerFor(i)
+                    }}
+                    className={`${inputClass} tap flex min-w-0 flex-1 items-center text-left`}
                   >
-                    <option value="">— select item —</option>
-                    {componentOptions.map((o) => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
-                  </select>
+                    <span className={`truncate ${row.component_id ? '' : 'text-ink-faint'}`}>
+                      {row.component_id ? (itemById.get(row.component_id)?.name ?? '?') : 'tap to pick item…'}
+                    </span>
+                  </button>
                   {/* wrapper fixes the width: inputClass's w-full would win over w-20 */}
                   <div className="w-16 shrink-0">
                     <input
@@ -611,6 +614,21 @@ export default function Catalog() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal title="Pick component" open={pickerFor !== null} onClose={() => setPickerFor(null)}>
+        <CatalogPicker
+          catalog={componentOptions}
+          value={pickerFor !== null ? (bundleRows[pickerFor]?.component_id ?? '') : ''}
+          allowCustom={false}
+          stockFor={(i) => i.stock_qty ?? 0}
+          onSelect={(id) => {
+            if (pickerFor !== null) {
+              setBundleRows(bundleRows.map((r, j) => (j === pickerFor ? { ...r, component_id: id } : r)))
+            }
+            setPickerFor(null)
+          }}
+        />
       </Modal>
     </div>
   )

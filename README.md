@@ -21,7 +21,7 @@ A small web app for tracking a merch shop: **orders, catalog, collects (producti
 1. In your Supabase project, open **SQL Editor** (left sidebar).
 2. Open the file [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) from this repo, copy **all** of it, paste into the editor, press **Run**.
 3. You should see "Success. No rows returned".
-4. Repeat for each remaining file in [`supabase/migrations/`](supabase/migrations/) in numeric order (`002_bundle_items.sql`, `003_stock_sync.sql`, `004_product_photos.sql` — adds the item description + product photo columns and the `product-photos` storage bucket — `005_bundle_stock.sql`, which makes selling a bundle consume its components' stock and removes the outdated delivery-method constraint, then `006_collect_items.sql`, which adds collect positions that flow into the catalog when a collect arrives).
+4. Repeat for each remaining file in [`supabase/migrations/`](supabase/migrations/) in numeric order (`002` through `007`). Each file starts with a comment saying what it adds.
 
 > **Already set up earlier?** Only run the migration files you haven't run yet, in numeric order.
 

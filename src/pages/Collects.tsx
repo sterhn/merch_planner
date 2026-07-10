@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { formatDate, formatRub, todayISO } from '../lib/format'
 import { showToast } from '../lib/toast'
 import Modal from '../components/Modal'
+import CatalogPicker from '../components/CatalogPicker'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
 import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
@@ -18,6 +19,7 @@ interface PositionRow {
   item_id: string
   name_text: string
   qty: string
+  print_cost: string
 }
 
 export default function Collects() {
@@ -34,6 +36,8 @@ export default function Collects() {
   const [positions, setPositions] = useState<PositionRow[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [receiveBusy, setReceiveBusy] = useState(false)
+  // Index of the position row whose item picker modal is open
+  const [pickerFor, setPickerFor] = useState<number | null>(null)
 
   const itemById = useMemo(() => {
     const m = new Map<string, Item>()
@@ -78,6 +82,7 @@ export default function Collects() {
           item_id: p.item_id ?? '',
           name_text: p.name_text ?? '',
           qty: String(p.qty),
+          print_cost: p.print_cost?.toString() ?? '',
         })),
       )
     }
@@ -90,8 +95,23 @@ export default function Collects() {
         item_id: p.item_id || null,
         name_text: p.item_id ? null : p.name_text.trim(),
         qty: Math.max(1, Math.round(Number(p.qty)) || 1),
+        print_cost: p.print_cost === '' ? null : Number(p.print_cost),
       }))
   }
+
+  // ₽ per piece: sums used to prefill the collect totals and price new items.
+  const positionTotals = useMemo(() => {
+    const rows = positions
+      .filter((p) => p.item_id || p.name_text.trim())
+      .map((p) => ({
+        qty: Math.max(1, Math.round(Number(p.qty)) || 1),
+        print_cost: p.print_cost === '' ? null : Number(p.print_cost),
+      }))
+    return {
+      qty: rows.reduce((s, p) => s + p.qty, 0),
+      print: rows.reduce((s, p) => s + p.qty * (p.print_cost ?? 0), 0),
+    }
+  }, [positions])
 
   // Replaces the collect's positions with the editor rows. No-op for collects
   // that never had positions.
@@ -110,13 +130,13 @@ export default function Collects() {
   // Saves the collect + positions; returns the saved collect or null on failure.
   async function doSave(): Promise<Collect | null> {
     setFormError(null)
-    const posQty = cleanPositions().reduce((s, p) => s + p.qty, 0)
     const values = {
       name: form.name || null,
       vendor: form.vendor || null,
-      // Total quantity falls back to the sum of positions so cost-per-unit works.
-      qty: form.qty !== '' ? Number(form.qty) : posQty > 0 ? posQty : null,
-      print_cost: form.print_cost === '' ? 0 : Number(form.print_cost),
+      // Totals fall back to the sums of positions so cost-per-unit works
+      // without retyping them.
+      qty: form.qty !== '' ? Number(form.qty) : positionTotals.qty > 0 ? positionTotals.qty : null,
+      print_cost: form.print_cost !== '' ? Number(form.print_cost) : positionTotals.print,
       commission: form.commission === '' ? 0 : Number(form.commission),
       delivery_cost: form.delivery_cost === '' ? 0 : Number(form.delivery_cost),
       deadline: form.deadline || null,
@@ -157,10 +177,19 @@ export default function Collects() {
     if (!saved) return
     setReceiveBusy(true)
     try {
-      const totalCost =
-        (Number(form.print_cost) || 0) + (Number(form.commission) || 0) + (Number(form.delivery_cost) || 0)
-      const qtyTotal = form.qty !== '' ? Number(form.qty) : cleanPositions().reduce((s, p) => s + p.qty, 0)
-      const costPerUnit = qtyTotal > 0 ? Math.round((totalCost / qtyTotal) * 100) / 100 : null
+      const printTotal = form.print_cost !== '' ? Number(form.print_cost) : positionTotals.print
+      const overhead = (Number(form.commission) || 0) + (Number(form.delivery_cost) || 0)
+      const qtyTotal = form.qty !== '' ? Number(form.qty) : positionTotals.qty
+      // Overhead (commission + delivery) is spread evenly per piece; a position
+      // with its own print cost gets that + overhead, otherwise the even split.
+      const overheadPerUnit = qtyTotal > 0 ? overhead / qtyTotal : 0
+      const evenPerUnit = qtyTotal > 0 ? (printTotal + overhead) / qtyTotal : null
+      const unitCost = (r: CollectItem) =>
+        r.print_cost != null
+          ? Math.round((r.print_cost + overheadPerUnit) * 100) / 100
+          : evenPerUnit != null
+            ? Math.round(evenPerUnit * 100) / 100
+            : null
 
       const { data: rows, error } = await supabase.from('collect_items').select('*').eq('collect_id', saved.id)
       if (error) throw error
@@ -176,7 +205,7 @@ export default function Collects() {
         } else if (r.name_text) {
           const { data: created, error: insErr } = await supabase
             .from('items')
-            .insert({ name: r.name_text, cost_price: costPerUnit, stock_qty: r.qty })
+            .insert({ name: r.name_text, cost_price: unitCost(r), stock_qty: r.qty })
             .select('id')
             .single()
           if (insErr) throw insErr
@@ -302,31 +331,18 @@ export default function Collects() {
               {positions.map((row, i) => (
                 <div key={i} className="space-y-1.5 rounded-control border border-line p-2">
                   <div className="flex items-center gap-2">
-                    <select
-                      className={`${inputClass} min-w-0 flex-1`}
-                      value={row.item_id}
-                      onChange={(e) =>
-                        setPositions(positions.map((r, j) => (j === i ? { ...r, item_id: e.target.value } : r)))
-                      }
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic()
+                        setPickerFor(i)
+                      }}
+                      className={`${inputClass} tap flex min-w-0 flex-1 items-center text-left`}
                     >
-                      <option value="">＋ new item…</option>
-                      {(items ?? []).map((o) => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                    </select>
-                    <div className="w-16 shrink-0">
-                      <input
-                        type="number"
-                        min={1}
-                        inputMode="numeric"
-                        aria-label="Quantity"
-                        className={`${inputClass} text-center`}
-                        value={row.qty}
-                        onChange={(e) =>
-                          setPositions(positions.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
-                        }
-                      />
-                    </div>
+                      <span className={`truncate ${row.item_id ? '' : 'text-ink-faint'}`}>
+                        {row.item_id ? (itemById.get(row.item_id)?.name ?? '?') : '＋ new item — tap to pick existing'}
+                      </span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -349,22 +365,56 @@ export default function Collects() {
                       }
                     />
                   )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-ink-faint">Qty</span>
+                      <input
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        className={inputClass}
+                        value={row.qty}
+                        onChange={(e) =>
+                          setPositions(positions.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
+                        }
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-ink-faint">Print ₽/pc</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        className={inputClass}
+                        value={row.print_cost}
+                        onChange={(e) =>
+                          setPositions(positions.map((r, j) => (j === i ? { ...r, print_cost: e.target.value } : r)))
+                        }
+                      />
+                    </label>
+                  </div>
                 </div>
               ))}
               <button
                 type="button"
                 onClick={() => {
                   haptic()
-                  setPositions([...positions, { item_id: '', name_text: '', qty: '1' }])
+                  setPositions([...positions, { item_id: '', name_text: '', qty: '1', print_cost: '' }])
                 }}
                 className="tap flex min-h-11 items-center gap-1.5 text-sm font-bold text-brand"
               >
                 <Plus size={14} strokeWidth={3} />
                 Add position
               </button>
-              {positions.length === 0 && (
+              {positions.length === 0 ? (
                 <p className="text-xs text-ink-faint">
                   Optional — list what you ordered. When the collect arrives, one tap adds everything to the catalog.
+                </p>
+              ) : (
+                <p className="text-xs text-ink-faint">
+                  Positions total: {positionTotals.qty} pcs · print {formatRub(positionTotals.print)} — used for the
+                  quantity / print cost fields above when those are left empty.
                 </p>
               )}
             </div>
@@ -420,6 +470,21 @@ export default function Collects() {
             </div>
           )}
         </form>
+      </Modal>
+
+      <Modal title="Pick item" open={pickerFor !== null} onClose={() => setPickerFor(null)}>
+        <CatalogPicker
+          catalog={items ?? []}
+          value={pickerFor !== null ? (positions[pickerFor]?.item_id ?? '') : ''}
+          customLabel="＋ new item (enter name below)"
+          stockFor={(i) => i.stock_qty ?? 0}
+          onSelect={(id) => {
+            if (pickerFor !== null) {
+              setPositions(positions.map((r, j) => (j === pickerFor ? { ...r, item_id: id } : r)))
+            }
+            setPickerFor(null)
+          }}
+        />
       </Modal>
     </div>
   )
