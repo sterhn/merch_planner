@@ -46,7 +46,7 @@ async function main() {
 
   // --- Row counts ---
   console.log('Row counts:')
-  for (const table of ['items', 'orders', 'order_items', 'bundle_items', 'collects', 'shelf_items', 'expenses']) {
+  for (const table of ['items', 'orders', 'order_items', 'bundle_items', 'collects', 'collect_items', 'shelf_items', 'expenses']) {
     const { count, error } = await db.from(table).select('*', { count: 'exact', head: true })
     if (error) {
       console.log(`  ${table}: ERROR — ${error.message}`)

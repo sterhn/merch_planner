@@ -484,17 +484,20 @@ export default function Catalog() {
                       <option key={o.id} value={o.id}>{o.name}</option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    min={1}
-                    inputMode="numeric"
-                    aria-label="Quantity"
-                    className={`${inputClass} w-20 shrink-0 text-center`}
-                    value={row.qty}
-                    onChange={(e) =>
-                      setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
-                    }
-                  />
+                  {/* wrapper fixes the width: inputClass's w-full would win over w-20 */}
+                  <div className="w-16 shrink-0">
+                    <input
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      aria-label="Quantity"
+                      className={`${inputClass} text-center`}
+                      value={row.qty}
+                      onChange={(e) =>
+                        setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
+                      }
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {

@@ -64,6 +64,16 @@ export interface Collect {
   paid: boolean
   total_cost: number | null
   cost_per_unit: number | null
+  received_at: string | null
+  created_at: string
+}
+
+export interface CollectItem {
+  id: string
+  collect_id: string
+  item_id: string | null
+  name_text: string | null
+  qty: number
   created_at: string
 }
 
