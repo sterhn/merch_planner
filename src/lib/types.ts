@@ -6,6 +6,7 @@ export interface Item {
   name: string
   description: string | null
   image_url: string | null
+  product_photo_url: string | null
   cost_price: number | null
   sale_price: number | null
   profit: number | null

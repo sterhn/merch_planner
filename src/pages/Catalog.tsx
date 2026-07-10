@@ -3,7 +3,7 @@ import { Plus, Search, Tags, Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { deleteItemImage, uploadItemImage } from '../lib/images'
+import { deleteItemImage, uploadItemImage, uploadProductPhoto } from '../lib/images'
 import { supabase } from '../lib/supabase'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
@@ -11,7 +11,55 @@ import EmptyState from '../components/EmptyState'
 import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
-const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
+const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '', product_photo_url: '' }
+
+function PhotoField({ label, url, file, onPick, onClear, pct, alt }: {
+  label: string
+  url: string
+  file: File | null
+  onPick: (f: File | null) => void
+  onClear: () => void
+  pct: number | null
+  alt: string
+}) {
+  const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
+
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-3">
+        {(file || url) && (
+          <img src={preview ?? url} alt={alt} className="size-14 rounded-lg object-cover" />
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+          className="min-w-0 flex-1 text-xs text-ink-muted file:mr-2 file:rounded-full file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand"
+        />
+        {(file || url) && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
+            aria-label="Remove photo"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {pct !== null && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={Math.round(pct * 100)} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${Math.round(pct * 100)}%` }} />
+        </div>
+      )}
+    </Field>
+  )
+}
 
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -95,18 +143,13 @@ export default function Catalog() {
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const [itemPhoto, setItemPhoto] = useState<File | null>(null)
+  const [productPhoto, setProductPhoto] = useState<File | null>(null)
+  const [itemPct, setItemPct] = useState<number | null>(null)
+  const [productPct, setProductPct] = useState<number | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const uploading = uploadPct !== null
-
-  const photoPreview = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
-  useEffect(() => {
-    return () => {
-      if (photoPreview) URL.revokeObjectURL(photoPreview)
-    }
-  }, [photoPreview])
+  const uploading = itemPct !== null || productPct !== null
 
   const itemById = useMemo(() => {
     const m = new Map<string, Item>()
@@ -169,7 +212,8 @@ export default function Catalog() {
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
-    setPhotoFile(null)
+    setItemPhoto(null)
+    setProductPhoto(null)
     setPhotoError(null)
     setSaveError(null)
     if (item === 'new') {
@@ -186,6 +230,7 @@ export default function Catalog() {
         sale_price: item.sale_price?.toString() ?? '',
         stock_qty: item.stock_qty?.toString() ?? '',
         image_url: item.image_url ?? '',
+        product_photo_url: item.product_photo_url ?? '',
       })
       setBundleRows(
         (rawBundles ?? [])
@@ -220,19 +265,33 @@ export default function Catalog() {
     setPhotoError(null)
     setSaveError(null)
     let imageUrl = form.image_url || null
-    if (photoFile) {
-      setUploadPct(0)
+    let productUrl = form.product_photo_url || null
+    // Keep uploaded URLs in the form so a retry after a failure further down
+    // doesn't upload the same photo a second time.
+    if (itemPhoto) {
+      setItemPct(0)
       try {
-        imageUrl = await uploadItemImage(photoFile, setUploadPct)
-        // Keep the uploaded URL so a retry after a failed save below
-        // doesn't upload the photo a second time.
-        setPhotoFile(null)
+        imageUrl = await uploadItemImage(itemPhoto, setItemPct)
+        setItemPhoto(null)
         setForm((f) => ({ ...f, image_url: imageUrl ?? '' }))
       } catch {
-        setPhotoError('Photo upload failed — check that the product-photos bucket exists (see README).')
+        setPhotoError('Item photo upload failed — check that the item-images bucket exists (see README).')
         return
       } finally {
-        setUploadPct(null)
+        setItemPct(null)
+      }
+    }
+    if (productPhoto) {
+      setProductPct(0)
+      try {
+        productUrl = await uploadProductPhoto(productPhoto, setProductPct)
+        setProductPhoto(null)
+        setForm((f) => ({ ...f, product_photo_url: productUrl ?? '' }))
+      } catch {
+        setPhotoError('Product photo upload failed — check that the product-photos bucket exists (see README).')
+        return
+      } finally {
+        setProductPct(null)
       }
     }
     const values = {
@@ -245,9 +304,10 @@ export default function Catalog() {
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
       stock_qty: form.stock_qty === '' ? null : Number(form.stock_qty),
       image_url: imageUrl,
+      product_photo_url: productUrl,
     }
     try {
-      const oldUrl = editing !== 'new' && editing ? editing.image_url : null
+      const old = editing !== 'new' && editing ? editing : null
       let savedId: string
       if (editing === 'new') {
         const created = await insert.mutateAsync(values)
@@ -261,7 +321,8 @@ export default function Catalog() {
         return
       }
       await syncBundleItems(savedId)
-      if (oldUrl && oldUrl !== imageUrl) void deleteItemImage(oldUrl)
+      if (old?.image_url && old.image_url !== imageUrl) void deleteItemImage(old.image_url)
+      if (old?.product_photo_url && old.product_photo_url !== productUrl) void deleteItemImage(old.product_photo_url)
       setEditing(null)
     } catch {
       setSaveError('Save failed — check your connection and try again.')
@@ -381,41 +442,30 @@ export default function Catalog() {
               placeholder="optional — materials, size, notes…"
             />
           </Field>
-          <Field label="Photo">
-            <div className="flex items-center gap-3">
-              {(photoFile || form.image_url) && (
-                <img
-                  src={photoPreview ?? form.image_url}
-                  alt={form.name ? `Photo of ${form.name}` : 'Item photo'}
-                  className="size-14 rounded-lg object-cover"
-                />
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-                className="min-w-0 flex-1 text-xs text-ink-muted file:mr-2 file:rounded-full file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand"
-              />
-              {(photoFile || form.image_url) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPhotoFile(null)
-                    setForm({ ...form, image_url: '' })
-                  }}
-                  className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
-                  aria-label="Remove photo"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {uploading && (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={Math.round(uploadPct * 100)} aria-valuemin={0} aria-valuemax={100}>
-                <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${Math.round(uploadPct * 100)}%` }} />
-              </div>
-            )}
-          </Field>
+          <PhotoField
+            label="Item photo (small)"
+            url={form.image_url}
+            file={itemPhoto}
+            onPick={setItemPhoto}
+            onClear={() => {
+              setItemPhoto(null)
+              setForm({ ...form, image_url: '' })
+            }}
+            pct={itemPct}
+            alt={form.name ? `Photo of ${form.name}` : 'Item photo'}
+          />
+          <PhotoField
+            label="Product photo (large)"
+            url={form.product_photo_url}
+            file={productPhoto}
+            onPick={setProductPhoto}
+            onClear={() => {
+              setProductPhoto(null)
+              setForm({ ...form, product_photo_url: '' })
+            }}
+            pct={productPct}
+            alt={form.name ? `Product photo of ${form.name}` : 'Product photo'}
+          />
           <Field label="Bundle components">
             <div className="space-y-2">
               {bundleRows.map((row, i) => (
@@ -484,7 +534,7 @@ export default function Catalog() {
             </Field>
           </div>
           <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
-            {uploading ? `Uploading photo… ${Math.round(uploadPct * 100)}%` : 'Save'}
+            {uploading ? 'Uploading photo…' : 'Save'}
           </PrimaryButton>
           {(photoError || saveError) && (
             <p role="alert" className="mt-2 text-sm font-semibold text-bad">
@@ -500,6 +550,7 @@ export default function Catalog() {
                     remove.mutate(editing.id, {
                       onSuccess: () => {
                         void deleteItemImage(editing.image_url)
+                        void deleteItemImage(editing.product_photo_url)
                         setEditing(null)
                       },
                     })
