@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, ImageDown, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatRub } from '../lib/format'
+import { formatDate, formatRub } from '../lib/format'
+import { importedOrderRows, parseImportCode } from '../lib/importCode'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
@@ -109,6 +110,25 @@ export default function OrderDetail() {
     enabled: Boolean(id),
   })
 
+  // Other orders from the same customer (case-insensitive match on the same
+  // contact field; % _ \ escaped so ilike treats them literally).
+  const contactField = order?.telegram ? 'telegram' : order?.customer_email ? 'customer_email' : null
+  const contactValue = order?.telegram || order?.customer_email || ''
+  const { data: pastOrders } = useQuery({
+    queryKey: ['orders', 'by-contact', contactField, contactValue, id],
+    queryFn: async (): Promise<Order[]> => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .neq('id', id!)
+        .ilike(contactField!, contactValue.replace(/[\\%_]/g, '\\$&'))
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data as Order[]
+    },
+    enabled: Boolean(id && contactField),
+  })
+
   const { data: catalog } = useList<Item>('items', { orderBy: 'name' })
   const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
@@ -200,24 +220,13 @@ export default function OrderDetail() {
     e.preventDefault()
     setImportError('')
 
-    let items: { id?: string; name?: string; type?: string; qty?: number; price?: number | null }[]
-    try {
-      const raw = importText.trim().replace(/^import:/, '')
-      items = JSON.parse(raw)
-      if (!Array.isArray(items) || items.length === 0) throw new Error('Empty array')
-    } catch {
-      setImportError('Could not parse. Paste the import:[...] block from the order page.')
+    const items = parseImportCode(importText)
+    if (!items) {
+      setImportError('Could not parse. Paste the import:[...] code (or the whole message) from the store page.')
       return
     }
 
-    const rows = items.map((item) => ({
-      order_id: id!,
-      item_id: item.id || null,
-      name_text: item.name || null,
-      category: item.type || null,
-      qty: item.qty ?? 1,
-      unit_price: item.price ?? null,
-    }))
+    const rows = importedOrderRows(id!, items)
 
     setImportBusy(true)
     try {
@@ -445,6 +454,42 @@ export default function OrderDetail() {
           </div>
         )}
       </section>
+
+      {(pastOrders?.length ?? 0) > 0 && (
+        <section className="mb-6 rounded-card bg-surface p-4 shadow-card print:hidden">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 font-display text-sm text-ink-muted">
+              <History size={14} />
+              Previous orders
+            </h2>
+            <span className="shrink-0 text-xs text-ink-faint">
+              {pastOrders!.length} · {formatRub(pastOrders!.reduce((s, p) => s + (p.total_price ?? 0), 0))}
+            </span>
+          </div>
+          <ul className="divide-y divide-line">
+            {pastOrders!.slice(0, 5).map((p) => (
+              <li key={p.id}>
+                <Link to={`/orders/${p.id}`} className="tap flex min-h-11 items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{formatDate(p.created_at)}</p>
+                    <p
+                      className={`text-xs font-bold ${
+                        p.delivered ? 'text-good' : p.sent ? 'text-accent' : p.paid ? 'text-brand' : 'text-bad'
+                      }`}
+                    >
+                      {p.delivered ? 'Delivered' : p.sent ? 'Shipped' : p.paid ? 'Awaiting shipment' : 'Unpaid'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-display text-sm">{formatRub(p.total_price)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {pastOrders!.length > 5 && (
+            <p className="mt-1 text-xs text-ink-faint">and {pastOrders!.length - 5} more…</p>
+          )}
+        </section>
+      )}
 
       <div className="print:hidden">
         <HeaderForm

@@ -3,6 +3,7 @@ import { Settings, Loader2 } from 'lucide-react'
 import { useAuth } from './hooks/useAuth'
 import { supabaseConfigured } from './lib/supabase'
 import Layout from './components/Layout'
+import ShareTargetHandler from './components/ShareTargetHandler'
 import Toast from './components/Toast'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -42,6 +43,7 @@ export default function App() {
 
   return (
     <>
+      <ShareTargetHandler />
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
