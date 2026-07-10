@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, ImageDown, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
+import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
+import { haptic } from '../lib/haptics'
+import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import StatusBadge from '../components/StatusBadge'
 import CatalogPicker from '../components/CatalogPicker'
@@ -117,6 +120,7 @@ export default function OrderDetail() {
   const deleteLine = useDelete('order_items')
 
   const [addingLine, setAddingLine] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [lineForm, setLineForm] = useState({ item_id: '', name_text: '', qty: '1', unit_price: '' })
   const [importing, setImporting] = useState(false)
   const [importText, setImportText] = useState('')
@@ -229,6 +233,21 @@ export default function OrderDetail() {
     }
   }
 
+  async function exportImage() {
+    haptic()
+    setExporting(true)
+    try {
+      const blob = await renderOrderImage(order!, lines ?? [], itemNames)
+      const safeName = (order!.telegram || order!.customer_email || 'order').replace(/[^\w@.а-яё-]+/gi, '_')
+      const result = await shareOrderImage(blob, `${safeName}.png`)
+      if (result === 'saved') showToast('Image saved')
+    } catch {
+      showToast('Could not create the image')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   function printOrder() {
     const customerName = order!.telegram || order!.customer_email || 'Order'
     const date = new Date(order!.created_at).toLocaleDateString('ru-RU')
@@ -323,6 +342,15 @@ export default function OrderDetail() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="min-w-0 truncate font-display text-xl">{order.telegram || order.customer_email || 'Order'}</h1>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={exportImage}
+            disabled={exporting}
+            aria-label="Share as image"
+            title="Share as image"
+            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink print:hidden"
+          >
+            {exporting ? <Loader2 size={18} className="animate-spin" /> : <ImageDown size={18} />}
+          </button>
           <button
             onClick={printOrder}
             aria-label="Print / PDF"
