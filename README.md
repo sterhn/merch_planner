@@ -92,3 +92,16 @@ npm run dev                  # local dev server
 npm test                     # parser unit tests
 npm run build                # production build
 ```
+
+### Database health check
+
+Verifies migrations, storage buckets, and SKUs (uses the service_role key, same as the import — keep it local):
+
+```bash
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+npx tsx scripts/check-db.ts            # read-only report
+
+# … and to write the SKUs it proposes for items that have none:
+npx tsx scripts/check-db.ts --fix-skus
+```
