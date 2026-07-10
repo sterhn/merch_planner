@@ -4,6 +4,7 @@ export interface Item {
   fandom: string | null
   sku: string | null
   name: string
+  description: string | null
   image_url: string | null
   cost_price: number | null
   sale_price: number | null

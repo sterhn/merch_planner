@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Tags, Loader2 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage } from '../lib/images'
+import { supabase } from '../lib/supabase'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
-import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
+import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
-const EMPTY = { type: '', fandom: '', sku: '', name: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
+const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '' }
 
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -85,15 +87,19 @@ export default function Catalog() {
   const insert = useInsert<Item>('items')
   const update = useUpdate<Item>('items')
   const remove = useDelete('items')
+  const queryClient = useQueryClient()
 
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [fandomFilter, setFandomFilter] = useState<string | null>(null)
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
+  const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const uploading = uploadPct !== null
 
   const photoPreview = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
   useEffect(() => {
@@ -130,6 +136,13 @@ export default function Catalog() {
     return Array.from(s).sort()
   }, [items])
 
+  const componentOptions = useMemo(() => {
+    const selfId = editing !== 'new' && editing ? editing.id : null
+    return (items ?? [])
+      .filter((i) => i.id !== selfId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  }, [items, editing])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (items ?? []).filter((i) => {
@@ -158,60 +171,100 @@ export default function Catalog() {
     setEditing(item)
     setPhotoFile(null)
     setPhotoError(null)
+    setSaveError(null)
     if (item === 'new') {
       setForm(EMPTY)
+      setBundleRows([])
     } else {
       setForm({
         type: item.type ?? '',
         fandom: item.fandom ?? '',
         sku: item.sku ?? '',
         name: item.name,
+        description: item.description ?? '',
         cost_price: item.cost_price?.toString() ?? '',
         sale_price: item.sale_price?.toString() ?? '',
         stock_qty: item.stock_qty?.toString() ?? '',
         image_url: item.image_url ?? '',
       })
+      setBundleRows(
+        (rawBundles ?? [])
+          .filter((b) => b.bundle_id === item.id)
+          .map((b) => ({ component_id: b.component_id, qty: String(b.qty) })),
+      )
     }
+  }
+
+  // Replaces the item's bundle composition with the editor rows (merging
+  // duplicate component picks). No-op for items that never were bundles.
+  async function syncBundleItems(bundleId: string) {
+    const merged = new Map<string, number>()
+    for (const row of bundleRows) {
+      if (!row.component_id) continue
+      const qty = Math.max(1, Math.round(Number(row.qty)) || 1)
+      merged.set(row.component_id, (merged.get(row.component_id) ?? 0) + qty)
+    }
+    const rows = Array.from(merged, ([component_id, qty]) => ({ bundle_id: bundleId, component_id, qty }))
+    if (rows.length === 0 && !(rawBundles ?? []).some((b) => b.bundle_id === bundleId)) return
+    const { error: delError } = await supabase.from('bundle_items').delete().eq('bundle_id', bundleId)
+    if (delError) throw delError
+    if (rows.length > 0) {
+      const { error } = await supabase.from('bundle_items').insert(rows)
+      if (error) throw error
+    }
+    await queryClient.invalidateQueries({ queryKey: ['bundle_items'] })
   }
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
-    let imageUrl = form.image_url || null
     setPhotoError(null)
+    setSaveError(null)
+    let imageUrl = form.image_url || null
     if (photoFile) {
-      setUploading(true)
+      setUploadPct(0)
       try {
-        imageUrl = await uploadItemImage(photoFile)
+        imageUrl = await uploadItemImage(photoFile, setUploadPct)
+        // Keep the uploaded URL so a retry after a failed save below
+        // doesn't upload the photo a second time.
+        setPhotoFile(null)
+        setForm((f) => ({ ...f, image_url: imageUrl ?? '' }))
       } catch {
-        setPhotoError('Photo upload failed — check that the item-images bucket exists (see README).')
-        setUploading(false)
+        setPhotoError('Photo upload failed — check that the product-photos bucket exists (see README).')
         return
+      } finally {
+        setUploadPct(null)
       }
-      setUploading(false)
     }
     const values = {
       type: form.type || null,
       fandom: form.fandom || null,
       sku: form.sku || null,
       name: form.name,
+      description: form.description.trim() || null,
       cost_price: form.cost_price === '' ? null : Number(form.cost_price),
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
       stock_qty: form.stock_qty === '' ? null : Number(form.stock_qty),
       image_url: imageUrl,
     }
-    if (editing === 'new') {
-      insert.mutate(values, { onSuccess: () => setEditing(null) })
-    } else if (editing) {
-      const oldUrl = editing.image_url
-      update.mutate(
-        { id: editing.id, values },
-        {
-          onSuccess: () => {
-            if (oldUrl && oldUrl !== imageUrl) void deleteItemImage(oldUrl)
-            setEditing(null)
-          },
-        },
-      )
+    try {
+      const oldUrl = editing !== 'new' && editing ? editing.image_url : null
+      let savedId: string
+      if (editing === 'new') {
+        const created = await insert.mutateAsync(values)
+        savedId = created.id
+        // If the bundle sync below fails, a retry must update, not re-insert.
+        setEditing(created)
+      } else if (editing) {
+        await update.mutateAsync({ id: editing.id, values })
+        savedId = editing.id
+      } else {
+        return
+      }
+      await syncBundleItems(savedId)
+      if (oldUrl && oldUrl !== imageUrl) void deleteItemImage(oldUrl)
+      setEditing(null)
+    } catch {
+      setSaveError('Save failed — check your connection and try again.')
     }
   }
 
@@ -320,6 +373,14 @@ export default function Catalog() {
           <Field label="SKU">
             <input className={inputClass} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="optional product code" />
           </Field>
+          <Field label="Description">
+            <textarea
+              className={textareaClass}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="optional — materials, size, notes…"
+            />
+          </Field>
           <Field label="Photo">
             <div className="flex items-center gap-3">
               {(photoFile || form.image_url) && (
@@ -349,6 +410,67 @@ export default function Catalog() {
                 </button>
               )}
             </div>
+            {uploading && (
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={Math.round(uploadPct * 100)} aria-valuemin={0} aria-valuemax={100}>
+                <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${Math.round(uploadPct * 100)}%` }} />
+              </div>
+            )}
+          </Field>
+          <Field label="Bundle components">
+            <div className="space-y-2">
+              {bundleRows.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    className={`${inputClass} min-w-0 flex-1`}
+                    value={row.component_id}
+                    onChange={(e) =>
+                      setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, component_id: e.target.value } : r)))
+                    }
+                  >
+                    <option value="">— select item —</option>
+                    {componentOptions.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    aria-label="Quantity"
+                    className={`${inputClass} w-20 shrink-0 text-center`}
+                    value={row.qty}
+                    onChange={(e) =>
+                      setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic()
+                      setBundleRows(bundleRows.filter((_, j) => j !== i))
+                    }}
+                    className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
+                    aria-label="Remove component"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  haptic()
+                  setBundleRows([...bundleRows, { component_id: '', qty: '1' }])
+                }}
+                className="tap flex min-h-11 items-center gap-1.5 text-sm font-bold text-brand"
+              >
+                <Plus size={14} strokeWidth={3} />
+                Add component
+              </button>
+              {bundleRows.length === 0 && (
+                <p className="text-xs text-ink-faint">Optional — list what's inside if this item is a set.</p>
+              )}
+            </div>
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Cost ₽">
@@ -362,11 +484,11 @@ export default function Catalog() {
             </Field>
           </div>
           <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
-            {uploading ? 'Uploading photo…' : 'Save'}
+            {uploading ? `Uploading photo… ${Math.round(uploadPct * 100)}%` : 'Save'}
           </PrimaryButton>
-          {photoError && (
+          {(photoError || saveError) && (
             <p role="alert" className="mt-2 text-sm font-semibold text-bad">
-              {photoError}
+              {photoError ?? saveError}
             </p>
           )}
           {editing !== 'new' && editing && (
