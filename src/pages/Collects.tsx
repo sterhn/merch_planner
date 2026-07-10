@@ -13,7 +13,7 @@ import StatusBadge from '../components/StatusBadge'
 import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
-const EMPTY = { name: '', vendor: '', qty: '', print_cost: '', commission: '', delivery_cost: '', deadline: '', paid: false }
+const EMPTY = { name: '', vendor: '', commission: '', delivery_cost: '', deadline: '', paid: false }
 
 interface PositionRow {
   item_id: string
@@ -70,8 +70,6 @@ export default function Collects() {
       setForm({
         name: c.name ?? '',
         vendor: c.vendor ?? '',
-        qty: c.qty?.toString() ?? '',
-        print_cost: c.print_cost?.toString() ?? '',
         commission: c.commission?.toString() ?? '',
         delivery_cost: c.delivery_cost?.toString() ?? '',
         deadline: c.deadline ?? '',
@@ -130,13 +128,14 @@ export default function Collects() {
   // Saves the collect + positions; returns the saved collect or null on failure.
   async function doSave(): Promise<Collect | null> {
     setFormError(null)
+    // Quantity and print cost come from the positions. Collects saved before
+    // positions existed keep their stored values instead of being zeroed.
+    const prev = editing !== 'new' && editing ? editing : null
     const values = {
       name: form.name || null,
       vendor: form.vendor || null,
-      // Totals fall back to the sums of positions so cost-per-unit works
-      // without retyping them.
-      qty: form.qty !== '' ? Number(form.qty) : positionTotals.qty > 0 ? positionTotals.qty : null,
-      print_cost: form.print_cost !== '' ? Number(form.print_cost) : positionTotals.print,
+      qty: positionTotals.qty > 0 ? positionTotals.qty : (prev?.qty ?? null),
+      print_cost: positionTotals.print > 0 ? positionTotals.print : (prev?.print_cost ?? 0),
       commission: form.commission === '' ? 0 : Number(form.commission),
       delivery_cost: form.delivery_cost === '' ? 0 : Number(form.delivery_cost),
       deadline: form.deadline || null,
@@ -177,9 +176,9 @@ export default function Collects() {
     if (!saved) return
     setReceiveBusy(true)
     try {
-      const printTotal = form.print_cost !== '' ? Number(form.print_cost) : positionTotals.print
-      const overhead = (Number(form.commission) || 0) + (Number(form.delivery_cost) || 0)
-      const qtyTotal = form.qty !== '' ? Number(form.qty) : positionTotals.qty
+      const printTotal = saved.print_cost ?? 0
+      const overhead = (saved.commission ?? 0) + (saved.delivery_cost ?? 0)
+      const qtyTotal = saved.qty ?? 0
       // Overhead (commission + delivery) is spread evenly per piece; a position
       // with its own print cost gets that + overhead, otherwise the even split.
       const overheadPerUnit = qtyTotal > 0 ? overhead / qtyTotal : 0
@@ -310,12 +309,6 @@ export default function Collects() {
             <input className={inputClass} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantity">
-              <input className={inputClass} type="number" inputMode="numeric" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-            </Field>
-            <Field label="Print cost ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.print_cost} onChange={(e) => setForm({ ...form, print_cost: e.target.value })} />
-            </Field>
             <Field label="Commission ₽">
               <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
             </Field>
@@ -413,8 +406,7 @@ export default function Collects() {
                 </p>
               ) : (
                 <p className="text-xs text-ink-faint">
-                  Positions total: {positionTotals.qty} pcs · print {formatRub(positionTotals.print)} — used for the
-                  quantity / print cost fields above when those are left empty.
+                  Total: {positionTotals.qty} pcs · print {formatRub(positionTotals.print)}
                 </p>
               )}
             </div>
