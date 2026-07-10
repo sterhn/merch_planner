@@ -64,6 +64,7 @@ export default function Dashboard() {
   const { data: expenses } = useList<ExpenseFeedRow>('expense_feed')
   const { data: collects } = useList<Collect>('collects')
   const { data: items } = useList<Item>('items')
+  const { data: rawBundles } = useList<{ bundle_id: string }>('bundle_items', { select: 'bundle_id' })
 
   const stats = useMemo(() => {
     const orderRevenue = (orders ?? []).filter((o) => o.paid).reduce((s, o) => s + (o.total_price ?? 0), 0)
@@ -95,10 +96,14 @@ export default function Dashboard() {
     [shelf],
   )
 
-  const lowStock = useMemo(
-    () => (items ?? []).filter((i) => i.stock_qty !== null && i.stock_qty <= 2).slice(0, 4),
-    [items],
-  )
+  // Bundles are excluded: their availability comes from component stock,
+  // and the components themselves already surface here.
+  const lowStock = useMemo(() => {
+    const bundleIds = new Set((rawBundles ?? []).map((b) => b.bundle_id))
+    return (items ?? [])
+      .filter((i) => !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= 2)
+      .slice(0, 4)
+  }, [items, rawBundles])
 
   const recentOrders = useMemo(() => (orders ?? []).slice(0, 3), [orders])
 

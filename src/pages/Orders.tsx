@@ -6,6 +6,7 @@ import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import EmptyState from '../components/EmptyState'
+import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
 import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
@@ -32,7 +33,7 @@ export default function Orders() {
   const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
     orderBy: 'created_at',
     ascending: false,
-    select: '*, order_items(item:item_id(image_url))',
+    select: '*, order_items(name_text, item:item_id(name, image_url))',
   })
   const navigate = useNavigate()
   const insert = useInsert<Order>('orders')
@@ -59,7 +60,14 @@ export default function Orders() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (orders ?? []).filter((o) => {
-      if (q && !`${o.telegram ?? ''} ${o.customer_email ?? ''}`.toLowerCase().includes(q)) return false
+      if (q) {
+        const contact = `${o.telegram ?? ''} ${o.customer_email ?? ''}`.toLowerCase()
+        const itemNames = (o.order_items ?? [])
+          .map((oi) => oi.item?.name ?? oi.name_text ?? '')
+          .join(' ')
+          .toLowerCase()
+        if (!contact.includes(q) && !itemNames.includes(q)) return false
+      }
       if (filter === 'unpaid' && o.paid) return false
       if (filter === 'to_send' && !(o.paid && !o.sent)) return false
       if (filter === 'sent' && !(o.paid && o.sent && !o.delivered)) return false
@@ -232,7 +240,7 @@ export default function Orders() {
       <div className="relative mb-3">
         <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
         <input
-          placeholder="Search telegram or email…"
+          placeholder="Search contact or items…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className={`${inputClass} pl-11`}
@@ -241,20 +249,9 @@ export default function Orders() {
 
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => {
-              haptic(5)
-              setFilter(f.key)
-            }}
-            className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
-              filter === f.key
-                ? 'bg-brand text-white shadow-card'
-                : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
-            }`}
-          >
+          <FilterChip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)}>
             {f.label}
-          </button>
+          </FilterChip>
         ))}
       </div>
 

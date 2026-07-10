@@ -4,10 +4,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage, uploadProductPhoto } from '../lib/images'
+import { buildableCount, groupBundles, type BundleComponent } from '../lib/bundles'
 import { supabase } from '../lib/supabase'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
+import FilterChip from '../components/FilterChip'
 import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
@@ -61,22 +63,6 @@ function PhotoField({ label, url, file, onPick, onClear, pct, alt }: {
   )
 }
 
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
-        active
-          ? 'bg-brand text-white shadow-card'
-          : 'bg-surface-2 text-ink-muted shadow-card hover:bg-surface-2'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
 function ComboSelect({ value, onChange, options, placeholder }: {
   value: string
   onChange: (v: string) => void
@@ -125,11 +111,9 @@ function ItemImage({ src, type }: { src: string | null; type: string | null }) {
   )
 }
 
-interface RawBundleItem { bundle_id: string; component_id: string; qty: number }
-
 export default function Catalog() {
   const { data: items, isLoading, isError, refetch } = useList<Item>('items', { orderBy: 'type' })
-  const { data: rawBundles } = useList<RawBundleItem>('bundle_items', {
+  const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
   })
   const insert = useInsert<Item>('items')
@@ -141,6 +125,7 @@ export default function Catalog() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [fandomFilter, setFandomFilter] = useState<string | null>(null)
   const [editing, setEditing] = useState<Item | 'new' | null>(null)
+  const [viewing, setViewing] = useState<Item | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
   const [itemPhoto, setItemPhoto] = useState<File | null>(null)
@@ -157,17 +142,18 @@ export default function Catalog() {
     return m
   }, [items])
 
+  const bundleGroups = useMemo(() => groupBundles(rawBundles), [rawBundles])
+
   const bundleMap = useMemo(() => {
     const m = new Map<string, { name: string; qty: number }[]>()
-    for (const b of rawBundles ?? []) {
-      const name = itemById.get(b.component_id)?.name
-      if (!name) continue
-      const arr = m.get(b.bundle_id) ?? []
-      arr.push({ name, qty: b.qty })
-      m.set(b.bundle_id, arr)
+    for (const [bundleId, comps] of bundleGroups) {
+      const named = comps
+        .map((c) => ({ name: itemById.get(c.component_id)?.name, qty: c.qty }))
+        .filter((c): c is { name: string; qty: number } => Boolean(c.name))
+      if (named.length > 0) m.set(bundleId, named)
     }
     return m
-  }, [rawBundles, itemById])
+  }, [bundleGroups, itemById])
 
   const types = useMemo(() => {
     const s = new Set((items ?? []).map((i) => i.type).filter(Boolean) as string[])
@@ -377,32 +363,48 @@ export default function Catalog() {
       {!isLoading && !isError && filtered.length === 0 && <EmptyState icon={Tags} message="No items yet." />}
 
       <div className="space-y-2">
-        {filtered.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => openEditor(item)}
-            className="tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10"
-          >
-            <ItemImage src={item.image_url} type={item.type} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold">{item.name}</p>
-              <p className="truncate text-xs text-ink-muted">
-                {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
-              </p>
-              {(bundleMap.get(item.id) ?? []).length > 0 && (
-                <p className="mt-0.5 truncate text-xs font-semibold text-brand">
-                  {(bundleMap.get(item.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
-                </p>
-              )}
+        {filtered.map((item) => {
+          const canMake = buildableCount(item.id, bundleGroups, itemById)
+          const stockShown = canMake ?? item.stock_qty ?? 0
+          return (
+            <div key={item.id} className="flex w-full items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
+              <button
+                type="button"
+                onClick={() => {
+                  haptic()
+                  setViewing(item)
+                }}
+                aria-label={`View ${item.name}`}
+                className="tap shrink-0"
+              >
+                <ItemImage src={item.image_url} type={item.type} />
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditor(item)}
+                className="tap flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{item.name}</p>
+                  <p className="truncate text-xs text-ink-muted">
+                    {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
+                  </p>
+                  {(bundleMap.get(item.id) ?? []).length > 0 && (
+                    <p className="mt-0.5 truncate text-xs font-semibold text-brand">
+                      {(bundleMap.get(item.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
+                    </p>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
+                  <p className={`text-xs font-semibold ${stockShown <= 2 ? 'text-bad' : 'text-ink-faint'}`}>
+                    {canMake !== null ? `can make: ${canMake}` : `stock: ${stockShown}`}
+                  </p>
+                </div>
+              </button>
             </div>
-            <div className="shrink-0 text-right">
-              <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
-              <p className={`text-xs font-semibold ${(item.stock_qty ?? 0) <= 2 ? 'text-bad' : 'text-ink-faint'}`}>
-                stock: {item.stock_qty ?? 0}
-              </p>
-            </div>
-          </button>
-        ))}
+          )
+        })}
       </div>
 
       <Modal title={editing === 'new' ? 'Add item' : 'Edit item'} open={editing !== null} onClose={() => setEditing(null)}>
@@ -561,6 +563,51 @@ export default function Catalog() {
             </div>
           )}
         </form>
+      </Modal>
+
+      <Modal title={viewing?.name ?? 'Item'} open={viewing !== null} onClose={() => setViewing(null)}>
+        {viewing && (
+          <div>
+            {(viewing.product_photo_url || viewing.image_url) && (
+              <img
+                src={viewing.product_photo_url ?? viewing.image_url ?? undefined}
+                alt={viewing.name}
+                className="mb-4 max-h-[55dvh] w-full rounded-card bg-surface-2 object-contain"
+              />
+            )}
+            <p className="text-xs font-bold uppercase tracking-wider text-ink-muted">
+              {[viewing.type, viewing.fandom, viewing.sku].filter(Boolean).join(' · ') || '—'}
+            </p>
+            {viewing.description && (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{viewing.description}</p>
+            )}
+            {(bundleMap.get(viewing.id) ?? []).length > 0 && (
+              <p className="mt-2 text-sm font-semibold text-brand">
+                {(bundleMap.get(viewing.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
+              </p>
+            )}
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
+              <p className="text-sm text-ink-muted">
+                cost {formatRub(viewing.cost_price)} · profit {formatRub(viewing.profit)} ·{' '}
+                {buildableCount(viewing.id, bundleGroups, itemById) !== null
+                  ? `can make ${buildableCount(viewing.id, bundleGroups, itemById)}`
+                  : `stock ${viewing.stock_qty ?? 0}`}
+              </p>
+              <p className="font-display text-lg">{formatRub(viewing.sale_price)}</p>
+            </div>
+            <div className="mt-4">
+              <PrimaryButton
+                type="button"
+                onClick={() => {
+                  setViewing(null)
+                  openEditor(viewing)
+                }}
+              >
+                Edit
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

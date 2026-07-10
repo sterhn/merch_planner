@@ -7,15 +7,18 @@ import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
+import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import StatusBadge from '../components/StatusBadge'
 import EmptyState from '../components/EmptyState'
+import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
 import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
 
-function CatalogPicker({ catalog, value, onSelect }: {
+function CatalogPicker({ catalog, value, onSelect, stockFor }: {
   catalog: Item[]
   value: string
   onSelect: (id: string) => void
+  stockFor: (item: Item) => number
 }) {
   const [search, setSearch] = useState('')
   const [fandomFilter, setFandomFilter] = useState<string | null>(null)
@@ -59,28 +62,18 @@ function CatalogPicker({ catalog, value, onSelect }: {
       {types.length > 0 && (
         <div className="mb-1.5 flex gap-1.5 overflow-x-auto pb-1">
           {[null, ...types].map((t) => (
-            <button
-              key={t ?? '__all_types__'}
-              type="button"
-              onClick={() => setTypeFilter(t)}
-              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${typeFilter === t ? 'bg-brand text-white' : 'bg-surface-2 text-ink-muted'}`}
-            >
+            <FilterChip key={t ?? '__all_types__'} active={typeFilter === t} onClick={() => setTypeFilter(t)}>
               {t ?? 'All types'}
-            </button>
+            </FilterChip>
           ))}
         </div>
       )}
       {fandoms.length > 0 && (
         <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
           {[null, ...fandoms].map((f) => (
-            <button
-              key={f ?? '__all__'}
-              type="button"
-              onClick={() => setFandomFilter(f)}
-              className={`tap shrink-0 rounded-full px-3 py-1 text-xs font-bold ${fandomFilter === f ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted'}`}
-            >
+            <FilterChip key={f ?? '__all__'} active={fandomFilter === f} tone="accent" onClick={() => setFandomFilter(f)}>
               {f ?? 'All fandoms'}
-            </button>
+            </FilterChip>
           ))}
         </div>
       )}
@@ -92,22 +85,30 @@ function CatalogPicker({ catalog, value, onSelect }: {
         >
           — custom item —
         </button>
-        {filtered.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onSelect(item.id)}
-            className={`flex min-h-11 w-full items-center gap-2.5 border-t border-line px-3 py-2 text-left ${value === item.id ? 'bg-brand/10' : 'hover:bg-surface-2'}`}
-          >
-            {item.image_url ? (
-              <img src={item.image_url} alt="" className="size-9 shrink-0 rounded-lg object-cover" loading="lazy" />
-            ) : (
-              <div className="size-9 shrink-0 rounded-lg bg-surface-2" />
-            )}
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{item.name}</span>
-            <span className="shrink-0 font-display text-sm">{formatRub(item.sale_price)}</span>
-          </button>
-        ))}
+        {filtered.map((item) => {
+          const stock = stockFor(item)
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelect(item.id)}
+              className={`flex min-h-11 w-full items-center gap-2.5 border-t border-line px-3 py-2 text-left ${value === item.id ? 'bg-brand/10' : 'hover:bg-surface-2'} ${stock <= 0 ? 'opacity-60' : ''}`}
+            >
+              {item.image_url ? (
+                <img src={item.image_url} alt="" className="size-9 shrink-0 rounded-lg object-cover" loading="lazy" />
+              ) : (
+                <div className="size-9 shrink-0 rounded-lg bg-surface-2" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{item.name}</p>
+                <p className={`text-[11px] ${stock <= 0 ? 'font-bold text-bad' : 'text-ink-faint'}`}>
+                  {stock <= 0 ? 'out of stock' : `${stock} left`}
+                </p>
+              </div>
+              <span className="shrink-0 font-display text-sm">{formatRub(item.sale_price)}</span>
+            </button>
+          )
+        })}
         {filtered.length === 0 && (
           <p className="py-4 text-center text-sm text-ink-faint">No items found</p>
         )}
@@ -209,6 +210,9 @@ export default function OrderDetail() {
   })
 
   const { data: catalog } = useList<Item>('items', { orderBy: 'name' })
+  const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
+    select: 'bundle_id, component_id, qty',
+  })
   // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
   const updateOrder = useUpdate<Order>('orders', ['items'])
   const deleteOrder = useDelete('orders')
@@ -227,6 +231,8 @@ export default function OrderDetail() {
     for (const i of catalog ?? []) map.set(i.id, i)
     return map
   }, [catalog])
+
+  const bundleGroups = useMemo(() => groupBundles(rawBundles), [rawBundles])
 
   const linesTotal = useMemo(
     () => (lines ?? []).reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0),
@@ -541,6 +547,7 @@ export default function OrderDetail() {
             <CatalogPicker
               catalog={catalog ?? []}
               value={lineForm.item_id}
+              stockFor={(item) => effectiveStock(item, bundleGroups, itemNames)}
               onSelect={(id) => {
                 const picked = itemNames.get(id)
                 setLineForm({

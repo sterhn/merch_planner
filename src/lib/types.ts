@@ -15,7 +15,7 @@ export interface Item {
 }
 
 export interface OrderWithPhotos extends Order {
-  order_items: { item: { image_url: string | null } | null }[]
+  order_items: { name_text: string | null; item: { name: string; image_url: string | null } | null }[]
 }
 
 export const DELIVERY_METHODS = [

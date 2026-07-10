@@ -37,6 +37,17 @@ export default defineConfig({
               cacheableResponse: { statuses: [200] },
             },
           },
+          {
+            // Large product photos, same immutable-UUID scheme (fewer entries —
+            // they're ~10× the size of the thumbnails).
+            urlPattern: /^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\/product-photos\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'product-photos',
+              expiration: { maxEntries: 150, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
         ],
       },
     }),

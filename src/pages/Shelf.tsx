@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Plus, Store, Check, ReceiptText, Loader2 } from 'lucide-react'
-import type { Expense, ShelfItem } from '../lib/types'
+import type { Expense, ExpenseFeedRow, ShelfItem } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { currentMonth, formatRub } from '../lib/format'
 import Modal from '../components/Modal'
@@ -52,6 +52,7 @@ function ShelfRow({ r, onClick }: { r: ShelfItem; onClick: () => void }) {
 
 export default function Shelf() {
   const { data: rows, isLoading, isError, refetch } = useList<ShelfItem>('shelf_items', { orderBy: 'name' })
+  const { data: expenseFeed } = useList<ExpenseFeedRow>('expense_feed')
   const insert = useInsert<ShelfItem>('shelf_items')
   const update = useUpdate<ShelfItem>('shelf_items')
   const remove = useDelete('shelf_items')
@@ -60,11 +61,17 @@ export default function Shelf() {
   const [month, setMonth] = useState<string>('all')
   const [editing, setEditing] = useState<ShelfItem | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
-  const [rentLogged, setRentLogged] = useState(false)
   const [rentOpen, setRentOpen] = useState(false)
   const [rentAmount, setRentAmount] = useState('1500')
 
   const rentMonth = month !== 'all' ? month : currentMonth()
+
+  // Derived from the expense feed (not local state) so it survives reloads
+  // and reflects the selected month.
+  const rentLogged = useMemo(
+    () => (expenseFeed ?? []).some((e) => e.category === 'shelf_rent' && e.date.startsWith(rentMonth)),
+    [expenseFeed, rentMonth],
+  )
 
   const months = useMemo(() => {
     const set = new Set((rows ?? []).map((r) => r.month).filter((m): m is string => Boolean(m)))
@@ -123,12 +130,7 @@ export default function Shelf() {
         description: `Shelf rent ${m}`,
         amount,
       },
-      {
-        onSuccess: () => {
-          setRentLogged(true)
-          setRentOpen(false)
-        },
-      },
+      { onSuccess: () => setRentOpen(false) },
     )
   }
 
