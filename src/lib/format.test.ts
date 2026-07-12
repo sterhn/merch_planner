@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate, formatRub, monthKey, toISODate, todayISO, currentMonth } from './format'
+import { formatDate, formatMonth, formatRub, monthKey, toISODate, todayISO, currentMonth } from './format'
 
 describe('formatRub', () => {
   it('formats numbers with the ruble sign', () => {
@@ -27,6 +27,16 @@ describe('formatDate', () => {
 describe('monthKey', () => {
   it('returns YYYY-MM', () => {
     expect(monthKey('2026-07-06')).toBe('2026-07')
+  })
+})
+
+describe('formatMonth', () => {
+  it('renders YYYY-MM as an English month label', () => {
+    expect(formatMonth('2026-07')).toBe('July 2026')
+    expect(formatMonth('2025-12')).toBe('December 2025')
+  })
+  it('passes through unparseable values', () => {
+    expect(formatMonth('not-a-month')).toBe('not-a-month')
   })
 })
 

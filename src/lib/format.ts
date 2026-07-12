@@ -21,6 +21,13 @@ export function monthKey(date: string): string {
   return date.slice(0, 7)
 }
 
+/** "2026-07" → "July 2026" (period labels; UI copy is English). */
+export function formatMonth(month: string): string {
+  const d = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
+  if (Number.isNaN(d.getTime())) return month
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
 /** A Date as YYYY-MM-DD in the user's local timezone (not UTC). */
 export function toISODate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

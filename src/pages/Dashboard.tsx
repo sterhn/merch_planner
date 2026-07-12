@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock } from 'lucide-react'
+import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
-import { formatDate, formatRub, toISODate } from '../lib/format'
+import { currentMonth, formatDate, formatMonth, formatRub, monthKey, toISODate } from '../lib/format'
+import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
+
+const MONTH_KEY = /^\d{4}-\d{2}$/
 
 function HeroCard({ value, isPositive }: { value: number; isPositive: boolean }) {
   return (
@@ -66,10 +69,38 @@ export default function Dashboard() {
   const { data: items } = useList<Item>('items')
   const { data: rawBundles } = useList<{ bundle_id: string }>('bundle_items', { select: 'bundle_id' })
 
+  const [period, setPeriod] = useState(currentMonth)
+
+  // 'all' followed by every month from the earliest data point up to now,
+  // so the stepper can walk back through history and land on the total.
+  const periods = useMemo(() => {
+    const keys = [
+      ...(orders ?? []).map((o) => monthKey(o.created_at)),
+      ...(expenses ?? []).map((e) => monthKey(e.date)),
+      ...(shelf ?? []).map((r) => r.month ?? ''),
+    ].filter((k) => MONTH_KEY.test(k))
+    const current = currentMonth()
+    let earliest = current
+    for (const k of keys) if (k < earliest) earliest = k
+    const list = ['all']
+    let y = Number(earliest.slice(0, 4))
+    let m = Number(earliest.slice(5, 7))
+    const [cy, cm] = [Number(current.slice(0, 4)), Number(current.slice(5, 7))]
+    while (y < cy || (y === cy && m <= cm)) {
+      list.push(`${y}-${String(m).padStart(2, '0')}`)
+      m += 1
+      if (m > 12) { m = 1; y += 1 }
+    }
+    return list
+  }, [orders, expenses, shelf])
+
   const stats = useMemo(() => {
-    const orderRevenue = (orders ?? []).filter((o) => o.paid).reduce((s, o) => s + (o.total_price ?? 0), 0)
-    const shelfIncome = (shelf ?? []).reduce((s, r) => s + (r.income ?? 0), 0)
-    const totalExpenses = (expenses ?? []).reduce((s, e) => s + e.amount, 0)
+    const inPeriod = (m: string | null) => period === 'all' || m === period
+    const orderRevenue = (orders ?? [])
+      .filter((o) => o.paid && inPeriod(monthKey(o.created_at)))
+      .reduce((s, o) => s + (o.total_price ?? 0), 0)
+    const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
+    const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
     return {
       orderRevenue,
       shelfIncome,
@@ -78,7 +109,7 @@ export default function Dashboard() {
       unpaid: (orders ?? []).filter((o) => !o.paid).length,
       toSend: (orders ?? []).filter((o) => o.paid && !o.sent).length,
     }
-  }, [orders, shelf, expenses])
+  }, [orders, shelf, expenses, period])
 
   const upcoming = useMemo(() => {
     const now = new Date()
@@ -109,9 +140,43 @@ export default function Dashboard() {
 
   const hasActions = stats.unpaid > 0 || stats.toSend > 0
 
+  const periodIdx = periods.indexOf(period)
+  const shiftPeriod = (delta: number) => {
+    const next = periods[periodIdx + delta]
+    if (next) {
+      haptic()
+      setPeriod(next)
+    }
+  }
+
   return (
     <div>
-      <h1 className="mb-4 font-display text-2xl">Dashboard</h1>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h1 className="font-display text-2xl">Dashboard</h1>
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => shiftPeriod(-1)}
+            disabled={periodIdx <= 0}
+            aria-label="Previous period"
+            className="tap grid size-11 place-items-center text-ink-muted disabled:opacity-30"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="min-w-24 text-center text-sm font-bold">
+            {period === 'all' ? 'All time' : formatMonth(period)}
+          </span>
+          <button
+            type="button"
+            onClick={() => shiftPeriod(1)}
+            disabled={periodIdx === periods.length - 1}
+            aria-label="Next period"
+            className="tap grid size-11 place-items-center text-ink-muted disabled:opacity-30"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
 
       <div className="mb-3 flex flex-col gap-2">
         <HeroCard value={stats.net} isPositive={stats.net >= 0} />
