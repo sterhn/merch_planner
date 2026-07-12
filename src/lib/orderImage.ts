@@ -481,7 +481,10 @@ export async function shareOrderImage(blobs: Blob[], baseName: string): Promise<
     (blob, i) =>
       new File([blob], blobs.length > 1 ? `${baseName}-${i + 1}.png` : `${baseName}.png`, { type: 'image/png' }),
   )
-  if (typeof navigator.canShare === 'function' && navigator.canShare({ files })) {
+  // Multi-page exports skip the share sheet: it has no copy action for several
+  // images at once, so a plain download is more useful there. A single page
+  // still goes through the sheet, where copying works.
+  if (files.length === 1 && typeof navigator.canShare === 'function' && navigator.canShare({ files })) {
     try {
       await navigator.share({ files })
       return 'shared'
