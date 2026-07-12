@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown, ChevronDown, ChevronUp, ClipboardPaste, History, ImageDown, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -103,7 +103,12 @@ export default function OrderDetail() {
   const { data: lines } = useQuery({
     queryKey: ['order_items', id],
     queryFn: async (): Promise<OrderItem[]> => {
-      const { data, error } = await supabase.from('order_items').select('*').eq('order_id', id!).order('created_at')
+      const { data, error } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', id!)
+        .order('position', { ascending: true, nullsFirst: false })
+        .order('created_at')
       if (error) throw error
       return data as OrderItem[]
     },
@@ -139,9 +144,14 @@ export default function OrderDetail() {
   const insertLine = useInsert<OrderItem>('order_items')
   const deleteLine = useDelete('order_items')
 
+  const updateLine = useUpdate<OrderItem>('order_items')
+
   const [addingLine, setAddingLine] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [lineForm, setLineForm] = useState({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+  const [reordering, setReordering] = useState(false)
+  const [editingLine, setEditingLine] = useState<OrderItem | null>(null)
+  const [editForm, setEditForm] = useState({ name_text: '', qty: '1', unit_price: '' })
   const [importing, setImporting] = useState(false)
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState('')
@@ -157,6 +167,13 @@ export default function OrderDetail() {
 
   const linesTotal = useMemo(
     () => (lines ?? []).reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0),
+    [lines],
+  )
+
+  // Next free position for appended lines; falls back to the index for rows
+  // created before positions existed.
+  const nextPosition = useMemo(
+    () => (lines ?? []).reduce((m, l, i) => Math.max(m, (l.position ?? i) + 1), 0),
     [lines],
   )
 
@@ -203,8 +220,10 @@ export default function OrderDetail() {
         order_id: id!,
         item_id: lineForm.item_id || null,
         name_text: lineForm.name_text || picked?.name || null,
+        category: picked?.type ?? null,
         qty: Number(lineForm.qty) || 1,
         unit_price: lineForm.unit_price !== '' ? Number(lineForm.unit_price) : (picked?.sale_price ?? null),
+        position: nextPosition,
       },
       {
         onSuccess: () => {
@@ -226,7 +245,7 @@ export default function OrderDetail() {
       return
     }
 
-    const rows = importedOrderRows(id!, items)
+    const rows = importedOrderRows(id!, items, nextPosition)
 
     setImportBusy(true)
     try {
@@ -246,15 +265,58 @@ export default function OrderDetail() {
     haptic()
     setExporting(true)
     try {
-      const blob = await renderOrderImage(order!, lines ?? [], itemNames)
+      const blobs = await renderOrderImage(order!, lines ?? [], itemNames)
       const safeName = (order!.telegram || order!.customer_email || 'order').replace(/[^\w@.а-яё-]+/gi, '_')
-      const result = await shareOrderImage(blob, `${safeName}.png`)
-      if (result === 'saved') showToast('Image saved')
+      const result = await shareOrderImage(blobs, safeName)
+      if (result === 'saved') showToast(blobs.length > 1 ? `${blobs.length} images saved` : 'Image saved')
     } catch {
       showToast('Could not create the image')
     } finally {
       setExporting(false)
     }
+  }
+
+  async function moveLine(index: number, dir: -1 | 1) {
+    const current = lines ?? []
+    const target = index + dir
+    if (target < 0 || target >= current.length) return
+    haptic()
+    const next = [...current]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    const renumbered = next.map((l, i) => ({ ...l, position: i }))
+    // Optimistic: show the new order right away, then persist every changed
+    // position (the first move also renumbers legacy null positions).
+    qc.setQueryData<OrderItem[]>(['order_items', id], renumbered)
+    const changed = renumbered.filter((l) => current.find((c) => c.id === l.id)?.position !== l.position)
+    const results = await Promise.all(
+      changed.map((l) => supabase.from('order_items').update({ position: l.position }).eq('id', l.id)),
+    )
+    if (results.some((r) => r.error)) {
+      showToast('Could not save the new order')
+      qc.invalidateQueries({ queryKey: ['order_items', id] })
+    }
+  }
+
+  function openLineEdit(l: OrderItem) {
+    haptic()
+    setEditForm({ name_text: l.name_text ?? '', qty: String(l.qty), unit_price: l.unit_price?.toString() ?? '' })
+    setEditingLine(l)
+  }
+
+  function saveLineEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingLine) return
+    updateLine.mutate(
+      {
+        id: editingLine.id,
+        values: {
+          ...(editingLine.item_id ? {} : { name_text: editForm.name_text || null }),
+          qty: Math.max(1, Math.round(Number(editForm.qty)) || 1),
+          unit_price: editForm.unit_price === '' ? null : Number(editForm.unit_price),
+        },
+      },
+      { onSuccess: () => setEditingLine(null) },
+    )
   }
 
   function printOrder() {
@@ -382,41 +444,91 @@ export default function OrderDetail() {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-display text-sm text-ink-muted">Items</h2>
           <div className="flex items-center gap-1 print:hidden">
-            <button
-              onClick={() => setImporting(true)}
-              className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-ink-muted"
-            >
-              <ClipboardPaste size={15} />
-              Import
-            </button>
-            <button
-              onClick={() => setAddingLine(true)}
-              className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand"
-            >
-              <Plus size={15} strokeWidth={3} />
-              Add item
-            </button>
+            {reordering ? (
+              <button
+                onClick={() => { haptic(); setReordering(false) }}
+                className="tap flex min-h-11 items-center gap-1 rounded-full bg-brand/10 px-4 text-sm font-bold text-brand"
+              >
+                Done
+              </button>
+            ) : (
+              <>
+                {(lines?.length ?? 0) > 1 && (
+                  <button
+                    onClick={() => { haptic(); setReordering(true) }}
+                    aria-label="Reorder items"
+                    title="Reorder items"
+                    className="tap flex size-11 items-center justify-center rounded-full text-ink-muted"
+                  >
+                    <ArrowUpDown size={15} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setImporting(true)}
+                  className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-ink-muted"
+                >
+                  <ClipboardPaste size={15} />
+                  Import
+                </button>
+                <button
+                  onClick={() => setAddingLine(true)}
+                  className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand"
+                >
+                  <Plus size={15} strokeWidth={3} />
+                  Add item
+                </button>
+              </>
+            )}
           </div>
         </div>
         {(lines ?? []).length === 0 && <p className="py-3 text-sm text-ink-faint">No items.</p>}
         <ul className="divide-y divide-line">
-          {(lines ?? []).map((l) => {
+          {(lines ?? []).map((l, index) => {
             const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
+            // Imported lines carry the store's type; manual lines fall back to
+            // the catalog item's type so the note shows either way.
+            const note = l.category ?? catalogItem?.type
             return (
-              <li key={l.id} className="flex items-center justify-between gap-2 py-2">
-                {catalogItem?.image_url
-                  ? <img src={catalogItem.image_url} alt="" className="size-8 shrink-0 rounded-lg object-cover" loading="lazy" />
-                  : <div className="size-8 shrink-0 rounded-lg bg-surface-2" />
-                }
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">
-                    {catalogItem?.name ?? l.name_text ?? '—'}
-                    {l.qty > 1 && <span className="text-ink-muted"> ×{l.qty}</span>}
-                  </p>
-                  {l.category && <p className="text-xs text-ink-faint">{l.category}</p>}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <span className="text-sm font-semibold">{formatRub(l.unit_price)}</span>
+              <li key={l.id} className="flex items-center gap-2 py-2">
+                <button
+                  type="button"
+                  onClick={() => !reordering && openLineEdit(l)}
+                  className="tap flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
+                  aria-label={`Edit ${catalogItem?.name ?? l.name_text ?? 'item'}`}
+                >
+                  {catalogItem?.image_url
+                    ? <img src={catalogItem.image_url} alt="" className="size-8 shrink-0 rounded-lg object-cover" loading="lazy" />
+                    : <div className="size-8 shrink-0 rounded-lg bg-surface-2" />
+                  }
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">
+                      {catalogItem?.name ?? l.name_text ?? '—'}
+                      {l.qty > 1 && <span className="text-ink-muted"> ×{l.qty}</span>}
+                    </p>
+                    {note && <p className="text-xs text-ink-faint">{note}</p>}
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold">{formatRub(l.unit_price)}</span>
+                </button>
+                {reordering ? (
+                  <div className="flex shrink-0 items-center print:hidden">
+                    <button
+                      onClick={() => moveLine(index, -1)}
+                      disabled={index === 0}
+                      className="tap flex size-10 items-center justify-center rounded-full text-ink-muted disabled:opacity-25"
+                      aria-label="Move up"
+                    >
+                      <ChevronUp size={18} />
+                    </button>
+                    <button
+                      onClick={() => moveLine(index, 1)}
+                      disabled={index === (lines?.length ?? 0) - 1}
+                      className="tap flex size-10 items-center justify-center rounded-full text-ink-muted disabled:opacity-25"
+                      aria-label="Move down"
+                    >
+                      <ChevronDown size={18} />
+                    </button>
+                  </div>
+                ) : (
                   <button
                     onClick={() => {
                       if (confirm('Remove this item?'))
@@ -424,12 +536,12 @@ export default function OrderDetail() {
                           onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
                         })
                     }}
-                    className="tap flex size-10 items-center justify-center rounded-full text-ink-faint hover:text-bad print:hidden"
+                    className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad print:hidden"
                     aria-label="Remove"
                   >
                     <Trash2 size={16} />
                   </button>
-                </div>
+                )}
               </li>
             )
           })}
@@ -543,6 +655,31 @@ export default function OrderDetail() {
           </div>
           <PrimaryButton type="submit" disabled={insertLine.isPending}>
             Add
+          </PrimaryButton>
+        </form>
+      </Modal>
+
+      <Modal title="Edit item" open={Boolean(editingLine)} onClose={() => setEditingLine(null)}>
+        <form onSubmit={saveLineEdit}>
+          {editingLine?.item_id ? (
+            <p className="mb-3 truncate text-sm font-semibold">
+              {itemNames.get(editingLine.item_id)?.name ?? editingLine.name_text ?? '—'}
+            </p>
+          ) : (
+            <Field label="Name">
+              <input className={inputClass} value={editForm.name_text} onChange={(e) => setEditForm({ ...editForm, name_text: e.target.value })} />
+            </Field>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Qty">
+              <input className={inputClass} type="number" min="1" inputMode="numeric" value={editForm.qty} onChange={(e) => setEditForm({ ...editForm, qty: e.target.value })} />
+            </Field>
+            <Field label="Unit price ₽">
+              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={editForm.unit_price} onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })} />
+            </Field>
+          </div>
+          <PrimaryButton type="submit" disabled={updateLine.isPending}>
+            Save
           </PrimaryButton>
         </form>
       </Modal>

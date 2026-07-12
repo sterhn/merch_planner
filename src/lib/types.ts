@@ -49,6 +49,7 @@ export interface OrderItem {
   category: string | null
   qty: number
   unit_price: number | null
+  position: number | null
   created_at: string
 }
 

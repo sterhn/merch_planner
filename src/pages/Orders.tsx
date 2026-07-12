@@ -85,7 +85,12 @@ export default function Orders() {
       const orderIds = filtered.map((o) => o.id)
 
       const [{ data: allItems }, { data: catalog }] = await Promise.all([
-        supabase.from('order_items').select('*').in('order_id', orderIds).order('created_at'),
+        supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', orderIds)
+          .order('position', { ascending: true, nullsFirst: false })
+          .order('created_at'),
         supabase.from('items').select('id, name'),
       ])
 

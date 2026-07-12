@@ -1,12 +1,15 @@
 import type { Item, Order, OrderItem } from './types'
 import { formatRub } from './format'
 
-// Renders an order as a shareable PNG styled like the public store page
+// Renders an order as shareable PNGs styled like the public store page
 // (sterhn/merch_page): dark ground, cream serif, teal accents, sharp-cornered
 // bordered cards with ✦ ornaments — so clients can recheck their order.
+// Long orders are split into several pages: messengers recompress photos whose
+// long side exceeds ~2560px, which would turn one tall image into blur.
 
 const SCALE = 2 // export at 2x for crisp text in messengers
 const W = 560
+const MAX_PAGE_H = 1200 // CSS px per page; ×SCALE stays under the ~2560px cap
 const MARGIN = 28
 const CARD_PAD = 18
 const THUMB = 48
@@ -157,7 +160,17 @@ function drawThumb(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, 
   ctx.strokeRect(x + 0.5, y + 0.5, THUMB - 1, THUMB - 1)
 }
 
-export async function renderOrderImage(order: Order, lines: OrderItem[], catalog: Map<string, Item>): Promise<Blob> {
+interface MeasuredRow {
+  name: string
+  category: string | null
+  qty: number
+  unit: number | null
+  image: HTMLImageElement | null
+  nameLines: string[]
+  rowH: number
+}
+
+export async function renderOrderImage(order: Order, lines: OrderItem[], catalog: Map<string, Item>): Promise<Blob[]> {
   await loadFonts()
 
   const rows = await Promise.all(
@@ -165,7 +178,9 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
       const item = l.item_id ? catalog.get(l.item_id) : undefined
       return {
         name: item?.name ?? l.name_text ?? '—',
-        category: l.category,
+        // Imported lines carry the store's type; manual lines fall back to the
+        // catalog item's type so the note under the name shows either way.
+        category: l.category ?? item?.type ?? null,
         qty: l.qty,
         unit: l.unit_price,
         image: item?.image_url ? await loadImage(item.image_url) : null,
@@ -177,33 +192,32 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
   const customer = order.telegram || order.customer_email || 'Order'
   const date = new Date(order.created_at).toLocaleDateString('ru-RU')
 
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas is not supported')
+  const mctx = document.createElement('canvas').getContext('2d')
+  if (!mctx) throw new Error('Canvas is not supported')
 
   const contentW = W - MARGIN * 2
   const cardInner = contentW - CARD_PAD * 2
 
   // --- measure pass ---
-  ctx.font = `700 30px ${SERIF}`
+  mctx.font = `700 30px ${SERIF}`
   let titleSize = 30
   const title = customer.toUpperCase()
-  while (titleSize > 16 && ctx.measureText(title).width > contentW) {
+  while (titleSize > 16 && mctx.measureText(title).width > contentW) {
     titleSize -= 1
-    ctx.font = `700 ${titleSize}px ${SERIF}`
+    mctx.font = `700 ${titleSize}px ${SERIF}`
   }
-  const titleW = ctx.measureText(title).width
+  const titleW = mctx.measureText(title).width
 
-  ctx.font = `700 17px ${SERIF}`
+  mctx.font = `700 17px ${SERIF}`
   const priceW = Math.max(
     64,
-    ...rows.map((r) => ctx.measureText(formatRub(r.unit != null ? r.unit * r.qty : null)).width),
+    ...rows.map((r) => mctx.measureText(formatRub(r.unit != null ? r.unit * r.qty : null)).width),
   )
   const nameW = cardInner - THUMB - 14 - priceW - 14
 
-  const measured = rows.map((r) => {
-    ctx.font = `600 17px ${SERIF}`
-    const nameLines = clampLines(ctx, wrapText(ctx, r.name, nameW), 2, nameW)
+  const measured: MeasuredRow[] = rows.map((r) => {
+    mctx.font = `600 17px ${SERIF}`
+    const nameLines = clampLines(mctx, wrapText(mctx, r.name, nameW), 2, nameW)
     const leftH = nameLines.length * 21 + (r.category ? 15 : 0)
     const rightH = 21 + (r.qty > 1 ? 15 : 0)
     return { ...r, nameLines, rowH: Math.max(THUMB, leftH, rightH) }
@@ -214,18 +228,11 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
   if (order.delivery_method) info.push(['Delivery', order.delivery_method])
   if (order.delivery_details) info.push(['Address', order.delivery_details])
 
-  ctx.font = `500 13px ${SANS}`
+  mctx.font = `500 13px ${SANS}`
   const infoRows = info.map(([label, value]) => ({
     label: label.toUpperCase(),
-    valueLines: wrapText(ctx, value, cardInner),
+    valueLines: wrapText(mctx, value, cardInner),
   }))
-
-  let itemsCardH = CARD_PAD
-  if (measured.length === 0) itemsCardH += 24
-  measured.forEach((r, i) => (itemsCardH += r.rowH + (i > 0 ? 16 : 0)))
-  itemsCardH += 14 + 15 // gap + items total line
-  if (order.total_price != null) itemsCardH += 12 + 30
-  itemsCardH += CARD_PAD
 
   const infoCardH =
     infoRows.length > 0
@@ -234,189 +241,264 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
         (infoRows.length - 1) * 14 +
         CARD_PAD
       : 0
+  const infoSectionH = infoRows.length > 0 ? 26 + 28 + infoCardH : 0
 
-  const headerH = 30 + titleSize + 10 + 15 + 18 + 12 // top pad, title, gap, date, gap, rule
-  const height =
-    headerH +
-    18 +
-    28 + // items section title
-    itemsCardH +
-    (infoCardH ? 26 + 28 + infoCardH : 0) +
-    24 + // footer ornament
-    30
+  const totalsH = 14 + 15 + (order.total_price != null ? 12 + 30 : 0)
+  const headerH = 30 + titleSize + 10 + 15 + 18 + 12 + 18 // pad, title, gap, date, gap, rule, gap
+  const contHeaderH = 30 // continuation pages skip the masthead
+  const footerH = 24 + 30
 
-  // --- draw pass ---
-  canvas.width = W * SCALE
-  canvas.height = Math.ceil(height) * SCALE
-  ctx.scale(SCALE, SCALE)
-  ctx.textBaseline = 'top'
-
-  ctx.fillStyle = BG
-  ctx.fillRect(0, 0, W, height)
-
-  let y = 30
-
-  // header: shimmer-gradient serif title, like the store's HEHEARSE masthead
-  const grad = ctx.createLinearGradient((W - titleW) / 2, 0, (W + titleW) / 2, 0)
-  grad.addColorStop(0, '#c8b8a8')
-  grad.addColorStop(0.3, '#f0e8de')
-  grad.addColorStop(0.5, ACCENT)
-  grad.addColorStop(0.7, '#f0e8de')
-  grad.addColorStop(1, '#c8b8a8')
-  ctx.fillStyle = grad
-  ctx.font = `700 ${titleSize}px ${SERIF}`
-  ctx.textAlign = 'center'
-  ctx.fillText(title, W / 2, y)
-  y += titleSize + 10
-
-  ctx.fillStyle = MUTED
-  ctx.font = `600 11px ${SANS}`
-  ctx.fillText(date.split('').join(' '), W / 2, y) // hair-spaced, like the store's letterspaced labels
-  ctx.textAlign = 'left'
-  y += 15 + 18
-
-  // header rule: fading lines around a sparkle
-  for (const dir of [-1, 1] as const) {
-    const lineGrad = ctx.createLinearGradient(W / 2 + dir * 24, 0, W / 2 + dir * 144, 0)
-    lineGrad.addColorStop(0, 'rgba(90, 160, 160, 0.4)')
-    lineGrad.addColorStop(1, 'rgba(90, 160, 160, 0)')
-    ctx.strokeStyle = lineGrad
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(W / 2 + dir * 24, y + 0.5)
-    ctx.lineTo(W / 2 + dir * 144, y + 0.5)
-    ctx.stroke()
-  }
-  sparkle(ctx, W / 2, y, 7, ACCENT)
-  y += 12 + 18
-
-  // items
-  sectionTitle(ctx, 'Items', y)
-  y += 28
-  card(ctx, MARGIN, y, contentW, itemsCardH)
-
-  const cardX = MARGIN + CARD_PAD
-  const cardRight = MARGIN + contentW - CARD_PAD
-  let cy = y + CARD_PAD
-
-  if (measured.length === 0) {
-    ctx.fillStyle = MUTED
-    ctx.font = `500 14px ${SANS}`
-    ctx.fillText('No items.', cardX, cy + 4)
-    cy += 24
+  function itemsCardH(chunk: MeasuredRow[], withTotals: boolean) {
+    let h = CARD_PAD
+    if (chunk.length === 0) h += 24
+    chunk.forEach((r, i) => (h += r.rowH + (i > 0 ? 16 : 0)))
+    if (withTotals) h += totalsH
+    return h + CARD_PAD
   }
 
-  measured.forEach((r, i) => {
-    if (i > 0) {
-      cy += 16
-      ctx.strokeStyle = DIVIDER
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(cardX, cy - 8.5)
-      ctx.lineTo(cardRight, cy - 8.5)
-      ctx.stroke()
+  // Split rows into pages. Every page's budget reserves the totals block so it
+  // always fits under whichever chunk ends up last.
+  const chunks: MeasuredRow[][] = [[]]
+  let used = 0
+  for (const r of measured) {
+    const chunk = chunks[chunks.length - 1]
+    const cap =
+      MAX_PAGE_H - (chunks.length === 1 ? headerH : contHeaderH) - 28 - CARD_PAD * 2 - totalsH - footerH
+    const cost = (chunk.length > 0 ? 16 : 0) + r.rowH
+    if (chunk.length > 0 && used + cost > cap) {
+      chunks.push([r])
+      used = r.rowH
+    } else {
+      chunk.push(r)
+      used += cost
     }
-
-    drawThumb(ctx, r.image, r.name, cardX, cy + (r.rowH - THUMB) / 2)
-
-    const leftH = r.nameLines.length * 21 + (r.category ? 15 : 0)
-    let ty = cy + (r.rowH - leftH) / 2
-    if (r.category) {
-      ctx.fillStyle = ACCENT
-      ctx.font = `600 9px ${SANS}`
-      ctx.fillText(r.category.toUpperCase().split('').join(' '), cardX + THUMB + 14, ty + 2)
-      ty += 15
-    }
-    ctx.fillStyle = INK
-    ctx.font = `600 17px ${SERIF}`
-    for (const line of r.nameLines) {
-      ctx.fillText(line, cardX + THUMB + 14, ty + 2)
-      ty += 21
-    }
-
-    const rightH = 21 + (r.qty > 1 ? 15 : 0)
-    let ry = cy + (r.rowH - rightH) / 2
-    ctx.textAlign = 'right'
-    ctx.fillStyle = ACCENT
-    ctx.font = `700 17px ${SERIF}`
-    ctx.fillText(formatRub(r.unit != null ? r.unit * r.qty : null), cardRight, ry + 2)
-    ry += 21
-    if (r.qty > 1) {
-      ctx.fillStyle = MUTED
-      ctx.font = `500 11px ${SANS}`
-      ctx.fillText(`${r.qty} × ${formatRub(r.unit)}`, cardRight, ry + 2)
-    }
-    ctx.textAlign = 'left'
-
-    cy += r.rowH
-  })
-
-  cy += 14
-  ctx.textAlign = 'right'
-  ctx.fillStyle = MUTED
-  ctx.font = `600 11px ${SANS}`
-  ctx.fillText(`ITEMS TOTAL: ${formatRub(linesTotal)}`, cardRight, cy)
-  cy += 15
-  if (order.total_price != null) {
-    cy += 12
-    ctx.fillStyle = ACCENT
-    ctx.font = `700 26px ${SERIF}`
-    ctx.fillText(`Total: ${formatRub(order.total_price)}`, cardRight, cy)
   }
-  ctx.textAlign = 'left'
-  y += itemsCardH
 
-  // delivery
-  if (infoRows.length > 0) {
-    y += 26
-    sectionTitle(ctx, 'Delivery', y)
-    y += 28
+  const lastChunk = chunks[chunks.length - 1]
+  const infoOwnPage =
+    infoRows.length > 0 &&
+    (chunks.length === 1 ? headerH : contHeaderH) + 28 + itemsCardH(lastChunk, true) + infoSectionH + footerH >
+      MAX_PAGE_H
+  const pageCount = chunks.length + (infoOwnPage ? 1 : 0)
+
+  function newPage(height: number) {
+    const canvas = document.createElement('canvas')
+    canvas.width = W * SCALE
+    canvas.height = Math.ceil(height) * SCALE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas is not supported')
+    ctx.scale(SCALE, SCALE)
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = BG
+    ctx.fillRect(0, 0, W, height)
+    return { canvas, ctx }
+  }
+
+  function drawInfoCard(ctx: CanvasRenderingContext2D, y: number) {
     card(ctx, MARGIN, y, contentW, infoCardH)
     let iy = y + CARD_PAD
     for (const r of infoRows) {
       ctx.fillStyle = ACCENT
       ctx.font = `600 9px ${SANS}`
-      ctx.fillText(r.label.split('').join(' '), cardX, iy)
+      ctx.fillText(r.label.split('').join(' '), MARGIN + CARD_PAD, iy)
       iy += 16
       ctx.fillStyle = INK
       ctx.font = `500 13px ${SANS}`
       for (const line of r.valueLines) {
-        ctx.fillText(line, cardX, iy)
+        ctx.fillText(line, MARGIN + CARD_PAD, iy)
         iy += 19
       }
       iy += 14
     }
-    y += infoCardH
   }
 
-  // footer ornament
-  sparkle(ctx, W / 2, y + 24 + 7, 5, 'rgba(90, 160, 160, 0.5)')
+  const canvases: HTMLCanvasElement[] = []
 
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob)
-      else reject(new Error('Could not export image')) // e.g. canvas tainted by a non-CORS image
-    }, 'image/png')
+  chunks.forEach((chunk, p) => {
+    const isFirst = p === 0
+    const isLast = p === chunks.length - 1
+    const withInfo = isLast && infoRows.length > 0 && !infoOwnPage
+    const cardH = itemsCardH(chunk, isLast)
+    const height = (isFirst ? headerH : contHeaderH) + 28 + cardH + (withInfo ? infoSectionH : 0) + footerH
+
+    const { canvas, ctx } = newPage(height)
+    let y = 30
+
+    if (isFirst) {
+      // header: shimmer-gradient serif title, like the store's HEHEARSE masthead
+      const grad = ctx.createLinearGradient((W - titleW) / 2, 0, (W + titleW) / 2, 0)
+      grad.addColorStop(0, '#c8b8a8')
+      grad.addColorStop(0.3, '#f0e8de')
+      grad.addColorStop(0.5, ACCENT)
+      grad.addColorStop(0.7, '#f0e8de')
+      grad.addColorStop(1, '#c8b8a8')
+      ctx.fillStyle = grad
+      ctx.font = `700 ${titleSize}px ${SERIF}`
+      ctx.textAlign = 'center'
+      ctx.fillText(title, W / 2, y)
+      y += titleSize + 10
+
+      ctx.fillStyle = MUTED
+      ctx.font = `600 11px ${SANS}`
+      ctx.fillText(date.split('').join(' '), W / 2, y) // hair-spaced, like the store's letterspaced labels
+      ctx.textAlign = 'left'
+      y += 15 + 18
+
+      // header rule: fading lines around a sparkle
+      for (const dir of [-1, 1] as const) {
+        const lineGrad = ctx.createLinearGradient(W / 2 + dir * 24, 0, W / 2 + dir * 144, 0)
+        lineGrad.addColorStop(0, 'rgba(90, 160, 160, 0.4)')
+        lineGrad.addColorStop(1, 'rgba(90, 160, 160, 0)')
+        ctx.strokeStyle = lineGrad
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(W / 2 + dir * 24, y + 0.5)
+        ctx.lineTo(W / 2 + dir * 144, y + 0.5)
+        ctx.stroke()
+      }
+      sparkle(ctx, W / 2, y, 7, ACCENT)
+      y += 12 + 18
+    }
+
+    sectionTitle(ctx, pageCount > 1 ? `Items · ${p + 1}/${pageCount}` : 'Items', y)
+    y += 28
+    card(ctx, MARGIN, y, contentW, cardH)
+
+    const cardX = MARGIN + CARD_PAD
+    const cardRight = MARGIN + contentW - CARD_PAD
+    let cy = y + CARD_PAD
+
+    if (chunk.length === 0) {
+      ctx.fillStyle = MUTED
+      ctx.font = `500 14px ${SANS}`
+      ctx.fillText('No items.', cardX, cy + 4)
+      cy += 24
+    }
+
+    chunk.forEach((r, i) => {
+      if (i > 0) {
+        cy += 16
+        ctx.strokeStyle = DIVIDER
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(cardX, cy - 8.5)
+        ctx.lineTo(cardRight, cy - 8.5)
+        ctx.stroke()
+      }
+
+      drawThumb(ctx, r.image, r.name, cardX, cy + (r.rowH - THUMB) / 2)
+
+      const leftH = r.nameLines.length * 21 + (r.category ? 15 : 0)
+      let ty = cy + (r.rowH - leftH) / 2
+      if (r.category) {
+        ctx.fillStyle = ACCENT
+        ctx.font = `600 9px ${SANS}`
+        ctx.fillText(r.category.toUpperCase().split('').join(' '), cardX + THUMB + 14, ty + 2)
+        ty += 15
+      }
+      ctx.fillStyle = INK
+      ctx.font = `600 17px ${SERIF}`
+      for (const line of r.nameLines) {
+        ctx.fillText(line, cardX + THUMB + 14, ty + 2)
+        ty += 21
+      }
+
+      const rightH = 21 + (r.qty > 1 ? 15 : 0)
+      let ry = cy + (r.rowH - rightH) / 2
+      ctx.textAlign = 'right'
+      ctx.fillStyle = ACCENT
+      ctx.font = `700 17px ${SERIF}`
+      ctx.fillText(formatRub(r.unit != null ? r.unit * r.qty : null), cardRight, ry + 2)
+      ry += 21
+      if (r.qty > 1) {
+        ctx.fillStyle = MUTED
+        ctx.font = `500 11px ${SANS}`
+        ctx.fillText(`${r.qty} × ${formatRub(r.unit)}`, cardRight, ry + 2)
+      }
+      ctx.textAlign = 'left'
+
+      cy += r.rowH
+    })
+
+    if (isLast) {
+      cy += 14
+      ctx.textAlign = 'right'
+      ctx.fillStyle = MUTED
+      ctx.font = `600 11px ${SANS}`
+      ctx.fillText(`ITEMS TOTAL: ${formatRub(linesTotal)}`, cardRight, cy)
+      cy += 15
+      if (order.total_price != null) {
+        cy += 12
+        ctx.fillStyle = ACCENT
+        ctx.font = `700 26px ${SERIF}`
+        ctx.fillText(`Total: ${formatRub(order.total_price)}`, cardRight, cy)
+      }
+      ctx.textAlign = 'left'
+    }
+    y += cardH
+
+    if (withInfo) {
+      y += 26
+      sectionTitle(ctx, 'Delivery', y)
+      y += 28
+      drawInfoCard(ctx, y)
+      y += infoCardH
+    }
+
+    // footer ornament
+    sparkle(ctx, W / 2, y + 24 + 7, 5, 'rgba(90, 160, 160, 0.5)')
+    canvases.push(canvas)
   })
+
+  if (infoOwnPage) {
+    const height = contHeaderH + 28 + infoCardH + footerH
+    const { canvas, ctx } = newPage(height)
+    let y = 30
+    sectionTitle(ctx, `Delivery · ${pageCount}/${pageCount}`, y)
+    y += 28
+    drawInfoCard(ctx, y)
+    y += infoCardH
+    sparkle(ctx, W / 2, y + 24 + 7, 5, 'rgba(90, 160, 160, 0.5)')
+    canvases.push(canvas)
+  }
+
+  return Promise.all(
+    canvases.map(
+      (canvas) =>
+        new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob)
+            else reject(new Error('Could not export image')) // e.g. canvas tainted by a non-CORS image
+          }, 'image/png')
+        }),
+    ),
+  )
 }
 
-/** Share the image via the native share sheet, or download it where sharing isn't available. */
-export async function shareOrderImage(blob: Blob, filename: string): Promise<'shared' | 'saved' | 'cancelled'> {
-  const file = new File([blob], filename, { type: 'image/png' })
-  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+/** Share the images via the native share sheet, or download them where sharing isn't available. */
+export async function shareOrderImage(blobs: Blob[], baseName: string): Promise<'shared' | 'saved' | 'cancelled'> {
+  const files = blobs.map(
+    (blob, i) =>
+      new File([blob], blobs.length > 1 ? `${baseName}-${i + 1}.png` : `${baseName}.png`, { type: 'image/png' }),
+  )
+  if (typeof navigator.canShare === 'function' && navigator.canShare({ files })) {
     try {
-      await navigator.share({ files: [file] })
+      await navigator.share({ files })
       return 'shared'
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled'
       // NotAllowedError etc. — fall through to a plain download
     }
   }
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  for (const file of files) {
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    // Browsers may swallow rapid back-to-back programmatic downloads.
+    if (files.length > 1) await new Promise((r) => setTimeout(r, 350))
+  }
   return 'saved'
 }

@@ -53,8 +53,14 @@ describe('importedOrderRows', () => {
       category: 'брелок',
       qty: 2,
       unit_price: 650,
+      position: 0,
     })
     expect(rows[1].item_id).toBe('b2')
     expect(rows[1].unit_price).toBeNull()
+  })
+
+  it('appends after existing lines via basePosition', () => {
+    const rows = importedOrderRows('o1', parseImportCode(CODE)!, 5)
+    expect(rows.map((r) => r.position)).toEqual([5, 6])
   })
 })
