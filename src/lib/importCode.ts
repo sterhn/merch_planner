@@ -36,13 +36,14 @@ export function parseImportCode(text: string): ImportedLine[] | null {
   return trimmed.startsWith('[') ? tryParse(trimmed) : null
 }
 
-export function importedOrderRows(orderId: string, lines: ImportedLine[]): Partial<OrderItem>[] {
-  return lines.map((line) => ({
+export function importedOrderRows(orderId: string, lines: ImportedLine[], basePosition = 0): Partial<OrderItem>[] {
+  return lines.map((line, i) => ({
     order_id: orderId,
     item_id: line.id || null,
     name_text: line.name || null,
     category: line.type || null,
     qty: line.qty ?? 1,
     unit_price: line.price ?? null,
+    position: basePosition + i,
   }))
 }
