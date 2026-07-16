@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate, formatMonth, formatRub, monthKey, toISODate, todayISO, currentMonth } from './format'
+import { formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate, todayISO, currentMonth } from './format'
 
 describe('formatRub', () => {
   it('formats numbers with the ruble sign', () => {
@@ -27,6 +27,30 @@ describe('formatDate', () => {
 describe('monthKey', () => {
   it('returns YYYY-MM', () => {
     expect(monthKey('2026-07-06')).toBe('2026-07')
+  })
+})
+
+describe('localMonth', () => {
+  it('uses the local timezone month for a timestamp', () => {
+    // Mid-month noon UTC is the same month in every timezone.
+    expect(localMonth('2026-07-15T12:00:00Z')).toBe('2026-07')
+    // Same instant, expressed with an offset.
+    expect(localMonth('2026-07-15T15:00:00+03:00')).toBe('2026-07')
+  })
+  it('falls back to monthKey for unparseable values', () => {
+    expect(localMonth('not-a-timestamp')).toBe('not-a-t')
+  })
+})
+
+describe('monthRange', () => {
+  it('spans a year boundary inclusively', () => {
+    expect(monthRange('2025-11', '2026-02')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+  })
+  it('returns a single month when from equals to', () => {
+    expect(monthRange('2026-07', '2026-07')).toEqual(['2026-07'])
+  })
+  it('returns nothing when from is after to', () => {
+    expect(monthRange('2026-08', '2026-07')).toEqual([])
   })
 })
 
