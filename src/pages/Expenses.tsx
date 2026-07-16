@@ -14,8 +14,9 @@ import {
 import type { Expense, ExpenseFeedRow } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList } from '../hooks/useTable'
-import { formatDate, formatRub, monthKey, todayISO } from '../lib/format'
+import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
+import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import EmptyState from '../components/EmptyState'
 import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
@@ -60,6 +61,19 @@ export default function Expenses() {
     return Array.from(groups.entries())
   }, [feed])
 
+  // Full history as contiguous monthly totals (zero-filled gaps) for the chart.
+  const monthlyTotals = useMemo<MonthTotal[]>(() => {
+    if (!feed || feed.length === 0) return []
+    const totals = new Map<string, number>()
+    for (const row of feed) {
+      const key = monthKey(row.date)
+      totals.set(key, (totals.get(key) ?? 0) + row.amount)
+    }
+    const keys = Array.from(totals.keys()).sort()
+    const last = keys[keys.length - 1] > currentMonth() ? keys[keys.length - 1] : currentMonth()
+    return monthRange(keys[0], last).map((month) => ({ month, total: totals.get(month) ?? 0 }))
+  }, [feed])
+
   function save(e: React.FormEvent) {
     e.preventDefault()
     insert.mutate(
@@ -100,10 +114,12 @@ export default function Expenses() {
       {isError && <EmptyState icon={Receipt} message="Failed to load expenses." onRetry={() => refetch()} />}
       {!isLoading && !isError && (feed ?? []).length === 0 && <EmptyState icon={Receipt} message="No expenses yet." />}
 
+      {monthlyTotals.length > 0 && <ExpenseChart months={monthlyTotals} />}
+
       {byMonth.map(([month, rows]) => (
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="font-display text-sm text-ink-muted">{month}</h2>
+            <h2 className="font-display text-sm text-ink-muted">{formatMonth(month)}</h2>
             <span className="font-display text-sm text-bad">
               −{formatRub(rows.reduce((s, r) => s + r.amount, 0))}
             </span>

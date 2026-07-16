@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
-import { currentMonth, formatDate, formatMonth, formatRub, monthKey, toISODate } from '../lib/format'
+import { currentMonth, formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate } from '../lib/format'
 import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
 
@@ -62,7 +62,7 @@ function ActionCard({ label, count, to, tone, index }: {
 }
 
 export default function Dashboard() {
-  const { data: orders } = useList<Order>('orders')
+  const { data: orders } = useList<Order>('orders', { orderBy: 'created_at', ascending: false })
   const { data: shelf } = useList<ShelfItem>('shelf_items')
   const { data: expenses } = useList<ExpenseFeedRow>('expense_feed')
   const { data: collects } = useList<Collect>('collects')
@@ -75,29 +75,20 @@ export default function Dashboard() {
   // so the stepper can walk back through history and land on the total.
   const periods = useMemo(() => {
     const keys = [
-      ...(orders ?? []).map((o) => monthKey(o.created_at)),
+      ...(orders ?? []).map((o) => localMonth(o.created_at)),
       ...(expenses ?? []).map((e) => monthKey(e.date)),
       ...(shelf ?? []).map((r) => r.month ?? ''),
     ].filter((k) => MONTH_KEY.test(k))
     const current = currentMonth()
     let earliest = current
     for (const k of keys) if (k < earliest) earliest = k
-    const list = ['all']
-    let y = Number(earliest.slice(0, 4))
-    let m = Number(earliest.slice(5, 7))
-    const [cy, cm] = [Number(current.slice(0, 4)), Number(current.slice(5, 7))]
-    while (y < cy || (y === cy && m <= cm)) {
-      list.push(`${y}-${String(m).padStart(2, '0')}`)
-      m += 1
-      if (m > 12) { m = 1; y += 1 }
-    }
-    return list
+    return ['all', ...monthRange(earliest, current)]
   }, [orders, expenses, shelf])
 
   const stats = useMemo(() => {
     const inPeriod = (m: string | null) => period === 'all' || m === period
     const orderRevenue = (orders ?? [])
-      .filter((o) => o.paid && inPeriod(monthKey(o.created_at)))
+      .filter((o) => o.paid && inPeriod(localMonth(o.created_at)))
       .reduce((s, o) => s + (o.total_price ?? 0), 0)
     const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
     const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
@@ -122,9 +113,15 @@ export default function Dashboard() {
       .map((c) => ({ ...c, urgent: c.deadline! <= soon }))
   }, [collects])
 
+  // Scoped to the selected period so it never contradicts the Shelf metric
+  // (e.g. a top seller from another month next to a 0 ₽ shelf income).
   const topSeller = useMemo(
-    () => [...(shelf ?? [])].sort((a, b) => (b.qty_sold ?? 0) - (a.qty_sold ?? 0)).find((r) => (r.qty_sold ?? 0) > 0) ?? null,
-    [shelf],
+    () =>
+      (shelf ?? [])
+        .filter((r) => period === 'all' || r.month === period)
+        .sort((a, b) => (b.qty_sold ?? 0) - (a.qty_sold ?? 0))
+        .find((r) => (r.qty_sold ?? 0) > 0) ?? null,
+    [shelf, period],
   )
 
   // Bundles are excluded: their availability comes from component stock,
@@ -133,6 +130,7 @@ export default function Dashboard() {
     const bundleIds = new Set((rawBundles ?? []).map((b) => b.bundle_id))
     return (items ?? [])
       .filter((i) => !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= 2)
+      .sort((a, b) => (a.stock_qty ?? 0) - (b.stock_qty ?? 0))
       .slice(0, 4)
   }, [items, rawBundles])
 
@@ -214,7 +212,7 @@ export default function Dashboard() {
                   <p className="min-w-0 truncate text-sm">{i.name}</p>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                      (i.stock_qty ?? 0) === 0 ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
+                      (i.stock_qty ?? 0) <= 0 ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
                     }`}
                   >
                     {i.stock_qty} left

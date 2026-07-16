@@ -21,6 +21,35 @@ export function monthKey(date: string): string {
   return date.slice(0, 7)
 }
 
+/**
+ * Month (YYYY-MM) of a timestamp in the user's local timezone. monthKey on a
+ * raw timestamptz slices the UTC month, which is off by one near midnight on
+ * month boundaries. Not for date-only strings — those parse as UTC midnight;
+ * keep using monthKey for them.
+ */
+export function localMonth(timestamp: string): string {
+  const d = new Date(timestamp)
+  if (Number.isNaN(d.getTime())) return monthKey(timestamp)
+  return toISODate(d).slice(0, 7)
+}
+
+/** Every month key from `from` to `to` inclusive (both YYYY-MM). */
+export function monthRange(from: string, to: string): string[] {
+  const out: string[] = []
+  let y = Number(from.slice(0, 4))
+  let m = Number(from.slice(5, 7))
+  const [ty, tm] = [Number(to.slice(0, 4)), Number(to.slice(5, 7))]
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m += 1
+    if (m > 12) {
+      m = 1
+      y += 1
+    }
+  }
+  return out
+}
+
 /** "2026-07" → "July 2026" (period labels; UI copy is English). */
 export function formatMonth(month: string): string {
   const d = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
