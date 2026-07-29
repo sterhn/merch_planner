@@ -2,12 +2,22 @@ import { useRef, useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { haptic } from '../lib/haptics'
 
+export type SwipeTone = 'good' | 'bad' | 'accent' | 'brand'
+
 export interface SwipeAction {
   icon: LucideIcon
   label: string
-  /** Background classes for the revealed area, e.g. 'bg-good' */
-  className: string
+  /** Fill of the revealed area. The matching foreground is chosen here, not by
+      the caller — the fills invert in dark mode and white would drop to ~1.8:1. */
+  tone: SwipeTone
   onAction: () => void
+}
+
+const TONE_CLASS: Record<SwipeTone, string> = {
+  good: 'bg-good text-on-good',
+  bad: 'bg-bad text-on-bad',
+  accent: 'bg-accent text-on-accent',
+  brand: 'bg-brand text-on-brand',
 }
 
 const MAX_PULL = 96
@@ -104,7 +114,7 @@ export default function SwipeableRow({
     <div className="relative overflow-hidden rounded-card" style={{ touchAction: 'pan-y' }}>
       {active && Icon && (
         <div
-          className={`absolute inset-0 flex items-center text-white ${active.className} ${
+          className={`absolute inset-0 flex items-center ${TONE_CLASS[active.tone]} ${
             dx > 0 ? 'justify-start pl-5' : 'justify-end pr-5'
           }`}
         >

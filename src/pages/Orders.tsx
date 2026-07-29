@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase'
 import EmptyState from '../components/EmptyState'
 import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
-import SwipeableRow from '../components/SwipeableRow'
+import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
@@ -403,64 +403,88 @@ export default function Orders() {
           const photos = [...new Set(
             (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
           )].slice(0, 6)
-          const advance = !o.paid
+          const advance: SwipeAction | undefined = !o.paid
             ? {
                 icon: BadgeCheck,
                 label: 'paid',
-                className: 'bg-good',
+                tone: 'good',
                 onAction: () => update.mutate({ id: o.id, values: { paid: true } }),
               }
             : !o.sent
               ? {
                   icon: Send,
                   label: 'sent',
-                  className: 'bg-accent',
+                  tone: 'accent',
                   onAction: () => update.mutate({ id: o.id, values: { sent: true } }),
                 }
               : !o.delivered
                 ? {
                     icon: PackageCheck,
                     label: 'delivered',
-                    className: 'bg-brand',
+                    tone: 'brand',
                     onAction: () => update.mutate({ id: o.id, values: { delivered: true } }),
                   }
                 : undefined
+          const who = o.telegram || o.customer_email || 'no contact'
+          const onDelete = () => {
+            if (confirm('Delete this order?')) remove.mutate(o.id)
+          }
+          const AdvanceIcon = advance?.icon
           return (
             <SwipeableRow
               key={o.id}
-              left={{
-                icon: Trash2,
-                label: 'delete',
-                className: 'bg-bad',
-                onAction: () => {
-                  if (confirm('Delete this order?')) remove.mutate(o.id)
-                },
-              }}
+              left={{ icon: Trash2, label: 'delete', tone: 'bad', onAction: onDelete }}
               right={advance}
             >
-              <Link
-                to={`/orders/${o.id}`}
-                className="tap flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
-              >
-                {photos.length > 0 && (
-                  <div className="flex shrink-0 flex-col gap-0.5">
-                    {photos.slice(0, 3).map((url, i) => (
-                      <img key={i} src={url} alt="" className="size-7 rounded-lg object-cover" loading="lazy" />
-                    ))}
-                    {photos.length > 3 && (
-                      <span className="text-center text-xs text-ink-faint">+{photos.length - 3}</span>
-                    )}
+              <div className="flex items-center rounded-card bg-surface shadow-card">
+                <Link
+                  to={`/orders/${o.id}`}
+                  className="tap flex min-w-0 flex-1 items-center justify-between gap-3 p-3.5"
+                >
+                  {photos.length > 0 && (
+                    <div className="flex shrink-0 flex-col gap-0.5">
+                      {photos.slice(0, 3).map((url, i) => (
+                        <img key={i} src={url} alt="" className="size-7 rounded-lg object-cover" loading="lazy" />
+                      ))}
+                      {photos.length > 3 && (
+                        <span className="text-center text-xs text-ink-faint">+{photos.length - 3}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{who}</p>
+                    <p className="truncate text-xs text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>
+                    <div className="mt-1.5">
+                      <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
+                    </div>
                   </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold">{o.telegram || o.customer_email || 'no contact'}</p>
-                  <p className="truncate text-xs text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>
-                  <div className="mt-1.5">
-                    <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
-                  </div>
+                  <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
+                </Link>
+                {/* SwipeableRow ignores mouse pointers, so without these the only way
+                    to delete or advance an order on a laptop would be to open it. */}
+                <div className="hidden shrink-0 items-center gap-0.5 pr-2 md:flex">
+                  {advance && AdvanceIcon && (
+                    <button
+                      type="button"
+                      onClick={advance.onAction}
+                      aria-label={`Mark ${who} as ${advance.label}`}
+                      title={`Mark as ${advance.label}`}
+                      className="tap grid size-10 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-good"
+                    >
+                      <AdvanceIcon size={17} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    aria-label={`Delete order from ${who}`}
+                    title="Delete order"
+                    className="tap grid size-10 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-bad"
+                  >
+                    <Trash2 size={17} />
+                  </button>
                 </div>
-                <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
-              </Link>
+              </div>
             </SwipeableRow>
           )
         })}

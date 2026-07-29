@@ -16,7 +16,7 @@ export default function FilterChip({ active, onClick, tone = 'brand', children }
       }}
       className={`tap h-9 shrink-0 rounded-full px-4 text-xs font-bold transition-colors ${
         active
-          ? `${tone === 'accent' ? 'bg-accent' : 'bg-brand'} text-white shadow-card`
+          ? `${tone === 'accent' ? 'bg-accent text-on-accent' : 'bg-brand text-on-brand'} shadow-card`
           : 'bg-surface-2 text-ink-muted shadow-card'
       }`}
     >

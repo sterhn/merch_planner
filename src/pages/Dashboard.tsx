@@ -1,23 +1,43 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarClock, ChevronLeft, ChevronRight, LayoutDashboard, Loader2, LogOut } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
+import { useSignOut } from '../hooks/useAuth'
+import EmptyState from '../components/EmptyState'
 import { currentMonth, formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate } from '../lib/format'
 import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
 
 const MONTH_KEY = /^\d{4}-\d{2}$/
 
+/** The sidebar sign-out is desktop-only, so mobile needs one here. */
+function SignOutButton() {
+  const signOut = useSignOut()
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        haptic()
+        void signOut()
+      }}
+      aria-label="Sign out"
+      className="tap grid size-11 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink md:hidden"
+    >
+      <LogOut size={18} />
+    </button>
+  )
+}
+
 function HeroCard({ value, isPositive }: { value: number; isPositive: boolean }) {
   return (
     <div className="animate-pop rounded-card bg-brand-strong p-5 shadow-card" style={{ animationDelay: '0ms' }}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-white/60">Net profit</p>
-      <p className="mt-1 font-display text-3xl text-white">
+      <p className="text-xs font-semibold uppercase tracking-widest text-on-brand-strong/60">Net profit</p>
+      <p className="mt-1 font-display text-3xl text-on-brand-strong">
         <AnimatedNumber value={value} format={formatRub} />
       </p>
       {!isPositive && (
-        <span className="mt-2 inline-block rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white">
+        <span className="mt-2 inline-block rounded-full bg-on-brand-strong/20 px-2.5 py-0.5 text-xs font-semibold text-on-brand-strong">
           deficit
         </span>
       )}
@@ -46,7 +66,7 @@ function MetricCard({ label, value, tone, index }: {
 function ActionCard({ label, count, to, tone, index }: {
   label: string; count: number; to: string; tone: 'danger' | 'brand'; index: number
 }) {
-  const badge = tone === 'danger' ? 'bg-bad text-white' : 'bg-brand text-white'
+  const badge = tone === 'danger' ? 'bg-bad text-on-bad' : 'bg-brand text-on-brand'
   return (
     <Link
       to={to}
@@ -62,12 +82,26 @@ function ActionCard({ label, count, to, tone, index }: {
 }
 
 export default function Dashboard() {
-  const { data: orders } = useList<Order>('orders', { orderBy: 'created_at', ascending: false })
-  const { data: shelf } = useList<ShelfItem>('shelf_items')
-  const { data: expenses } = useList<ExpenseFeedRow>('expense_feed')
-  const { data: collects } = useList<Collect>('collects')
-  const { data: items } = useList<Item>('items')
-  const { data: rawBundles } = useList<{ bundle_id: string }>('bundle_items', { select: 'bundle_id' })
+  const ordersQ = useList<Order>('orders', { orderBy: 'created_at', ascending: false })
+  const shelfQ = useList<ShelfItem>('shelf_items')
+  const expensesQ = useList<ExpenseFeedRow>('expense_feed')
+  const collectsQ = useList<Collect>('collects')
+  const itemsQ = useList<Item>('items')
+  const bundlesQ = useList<{ bundle_id: string }>('bundle_items', { select: 'bundle_id' })
+
+  const { data: orders } = ordersQ
+  const { data: shelf } = shelfQ
+  const { data: expenses } = expensesQ
+  const { data: collects } = collectsQ
+  const { data: items } = itemsQ
+  const { data: rawBundles } = bundlesQ
+
+  // Every tile here is a sum. Rendering them before the rows land would animate an
+  // authoritative-looking 0 ₽ that reads as "you earned nothing" rather than
+  // "not loaded yet" — so the whole page waits on the set.
+  const queries = [ordersQ, shelfQ, expensesQ, collectsQ, itemsQ, bundlesQ]
+  const isLoading = queries.some((q) => q.isLoading)
+  const isError = queries.some((q) => q.isError)
 
   const [period, setPeriod] = useState(currentMonth)
 
@@ -147,11 +181,32 @@ export default function Dashboard() {
     }
   }
 
+  if (isLoading || isError) {
+    return (
+      <div>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h1 className="font-display text-2xl">Dashboard</h1>
+          <SignOutButton />
+        </div>
+        {isError ? (
+          <EmptyState
+            icon={LayoutDashboard}
+            message="Failed to load the dashboard."
+            onRetry={() => queries.forEach((q) => void q.refetch())}
+          />
+        ) : (
+          <EmptyState icon={Loader2} spin message="Loading…" />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-2">
         <h1 className="font-display text-2xl">Dashboard</h1>
         <div className="flex items-center">
+          <SignOutButton />
           <button
             type="button"
             onClick={() => shiftPeriod(-1)}

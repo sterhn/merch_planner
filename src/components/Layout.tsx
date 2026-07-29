@@ -9,7 +9,7 @@ import {
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { useSignOut } from '../hooks/useAuth'
 import { haptic } from '../lib/haptics'
 
 const NAV: { to: string; label: string; icon: LucideIcon }[] = [
@@ -22,6 +22,8 @@ const NAV: { to: string; label: string; icon: LucideIcon }[] = [
 ]
 
 export default function Layout() {
+  const signOut = useSignOut()
+
   return (
     <div className="min-h-dvh md:flex">
       {/* Sidebar on desktop */}
@@ -47,7 +49,7 @@ export default function Layout() {
           ))}
         </nav>
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={() => void signOut()}
           className="tap m-3 flex items-center gap-3 rounded-control px-3 py-2.5 text-left text-sm font-medium text-ink-muted hover:bg-surface-2"
         >
           <LogOut size={18} />
@@ -62,21 +64,21 @@ export default function Layout() {
       </div>
 
       {/* Bottom tab bar on mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex rounded-t-sheet border-t border-line bg-surface/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_-8px_rgb(0_0_0/0.15)] backdrop-blur-lg md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex rounded-t-sheet border-t border-line bg-surface/90 pb-[env(safe-area-inset-bottom)] shadow-nav backdrop-blur-lg md:hidden">
         {NAV.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
             end={n.to === '/'}
             onClick={() => haptic(5)}
-            className="tap flex min-h-16 flex-1 flex-col items-center justify-center gap-1 py-2"
+            className="tap flex min-h-nav flex-1 flex-col items-center justify-center gap-1 py-2"
           >
             {({ isActive }) => (
               <>
                 <span
                   className={`flex items-center justify-center rounded-full px-4 py-1 transition-all duration-200 ${
                     isActive
-                      ? 'bg-brand text-white shadow-card'
+                      ? 'bg-brand text-on-brand shadow-card'
                       : 'text-ink-faint'
                   }`}
                 >

@@ -165,7 +165,7 @@ export default function Expenses() {
                   right={{
                     icon: Trash2,
                     label: 'delete',
-                    className: 'bg-bad',
+                    tone: 'bad',
                     onAction: () => confirmDelete(row.id),
                   }}
                 >
