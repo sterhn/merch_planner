@@ -1,9 +1,12 @@
 import type { Item, Order, OrderItem } from './types'
 import { formatRub } from './format'
+import { groupLinesByFandom, NO_FANDOM_LABEL } from './fandom'
 
 // Renders an order as shareable PNGs styled like the public store page
 // (sterhn/merch_page): dark ground, cream serif, teal accents, sharp-cornered
 // bordered cards with ✦ ornaments — so clients can recheck their order.
+// Items can be laid out flat or under fandom headings, matching the grouping
+// toggle on the order screen.
 // Long orders are split into several pages: messengers recompress photos whose
 // long side exceeds ~2560px, which would turn one tall image into blur.
 
@@ -160,7 +163,8 @@ function drawThumb(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, 
   ctx.strokeRect(x + 0.5, y + 0.5, THUMB - 1, THUMB - 1)
 }
 
-interface MeasuredRow {
+interface ItemRow {
+  kind: 'item'
   name: string
   category: string | null
   qty: number
@@ -170,13 +174,43 @@ interface MeasuredRow {
   rowH: number
 }
 
-export async function renderOrderImage(order: Order, lines: OrderItem[], catalog: Map<string, Item>): Promise<Blob[]> {
+/** A fandom heading between item rows, like the store page's sections. */
+interface GroupRow {
+  kind: 'group'
+  title: string
+  rowH: number
+}
+
+type MeasuredRow = ItemRow | GroupRow
+
+const GROUP_ROW_H = 22
+
+export async function renderOrderImage(
+  order: Order,
+  lines: OrderItem[],
+  catalog: Map<string, Item>,
+  opts: { groupByFandom?: boolean } = {},
+): Promise<Blob[]> {
   await loadFonts()
 
+  const groups = opts.groupByFandom ? groupLinesByFandom(lines, catalog) : null
+  // One flat sequence of headings and lines, so measuring and pagination stay
+  // the same whether or not the order is grouped.
+  const entries: ({ group: string; line?: undefined } | { group?: undefined; line: OrderItem })[] =
+    groups && groups.length > 1
+      ? groups.flatMap((g) => [
+          { group: g.fandom ?? NO_FANDOM_LABEL },
+          ...g.lines.map((line) => ({ line })),
+        ])
+      : lines.map((line) => ({ line }))
+
   const rows = await Promise.all(
-    lines.map(async (l) => {
+    entries.map(async (entry) => {
+      if (entry.line === undefined) return { kind: 'group' as const, title: entry.group }
+      const l = entry.line
       const item = l.item_id ? catalog.get(l.item_id) : undefined
       return {
+        kind: 'item' as const,
         name: item?.name ?? l.name_text ?? '—',
         // Imported lines carry the store's type; manual lines fall back to the
         // catalog item's type so the note under the name shows either way.
@@ -211,11 +245,14 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
   mctx.font = `700 17px ${SERIF}`
   const priceW = Math.max(
     64,
-    ...rows.map((r) => mctx.measureText(formatRub(r.unit != null ? r.unit * r.qty : null)).width),
+    ...rows
+      .filter((r) => r.kind === 'item')
+      .map((r) => mctx.measureText(formatRub(r.unit != null ? r.unit * r.qty : null)).width),
   )
   const nameW = cardInner - THUMB - 14 - priceW - 14
 
   const measured: MeasuredRow[] = rows.map((r) => {
+    if (r.kind === 'group') return { ...r, rowH: GROUP_ROW_H }
     mctx.font = `600 17px ${SERIF}`
     const nameLines = clampLines(mctx, wrapText(mctx, r.name, nameW), 2, nameW)
     const leftH = nameLines.length * 21 + (r.category ? 15 : 0)
@@ -260,14 +297,20 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
   // always fits under whichever chunk ends up last.
   const chunks: MeasuredRow[][] = [[]]
   let used = 0
+  let openGroup: GroupRow | null = null
   for (const r of measured) {
+    if (r.kind === 'group') openGroup = r
     const chunk = chunks[chunks.length - 1]
     const cap =
       MAX_PAGE_H - (chunks.length === 1 ? headerH : contHeaderH) - 28 - CARD_PAD * 2 - totalsH - footerH
     const cost = (chunk.length > 0 ? 16 : 0) + r.rowH
     if (chunk.length > 0 && used + cost > cap) {
-      chunks.push([r])
-      used = r.rowH
+      // A fandom heading never ends a page with nothing under it, and a group
+      // that spills over repeats its heading so the rows keep their context.
+      const orphan = chunk.length > 1 && chunk[chunk.length - 1].kind === 'group' ? chunk.pop()! : null
+      const lead = orphan ?? (r.kind === 'item' ? openGroup : null)
+      chunks.push(lead ? [lead, r] : [r])
+      used = (lead ? lead.rowH + 16 : 0) + r.rowH
     } else {
       chunk.push(r)
       used += cost
@@ -378,12 +421,30 @@ export async function renderOrderImage(order: Order, lines: OrderItem[], catalog
     chunk.forEach((r, i) => {
       if (i > 0) {
         cy += 16
+        // A heading is its own separator, so it skips the row divider.
+        if (r.kind === 'item') {
+          ctx.strokeStyle = DIVIDER
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.moveTo(cardX, cy - 8.5)
+          ctx.lineTo(cardRight, cy - 8.5)
+          ctx.stroke()
+        }
+      }
+
+      if (r.kind === 'group') {
+        ctx.fillStyle = ACCENT
+        ctx.font = `700 15px ${SERIF}`
+        ctx.fillText(r.title, cardX, cy + 2)
+        const titleEnd = cardX + ctx.measureText(r.title).width
         ctx.strokeStyle = DIVIDER
         ctx.lineWidth = 1
         ctx.beginPath()
-        ctx.moveTo(cardX, cy - 8.5)
-        ctx.lineTo(cardRight, cy - 8.5)
+        ctx.moveTo(titleEnd + 12, cy + 10.5)
+        ctx.lineTo(cardRight, cy + 10.5)
         ctx.stroke()
+        cy += r.rowH
+        return
       }
 
       drawThumb(ctx, r.image, r.name, cardX, cy + (r.rowH - THUMB) / 2)

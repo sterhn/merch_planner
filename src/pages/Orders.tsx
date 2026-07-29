@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer } from 'lucide-react'
+import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
@@ -11,6 +11,15 @@ import Modal from '../components/Modal'
 import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
+import { groupLinesByFandom, NO_FANDOM_LABEL } from '../lib/fandom'
+import {
+  fandomGrouping,
+  flushViewState,
+  forgetOrder,
+  lastOrder,
+  ordersView,
+  saveOrdersView,
+} from '../lib/viewState'
 
 type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
 
@@ -41,15 +50,56 @@ export default function Orders() {
   const update = useUpdate<Order>('orders', ['items'])
   const remove = useDelete('orders')
 
-  const [search, setSearch] = useState('')
+  // Search, filters and scroll come back from the last visit, so leaving an
+  // order half-entered and returning drops you where you stopped.
+  const [search, setSearch] = useState(() => ordersView().search)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [savedFilter, setSavedFilter] = useState<Filter>(() => {
+    const remembered = ordersView().filter
+    return FILTERS.some((f) => f.key === remembered) ? (remembered as Filter) : 'to_send'
+  })
   const filterParam = searchParams.get('filter')
-  const filter: Filter = FILTERS.some((f) => f.key === filterParam) ? (filterParam as Filter) : 'to_send'
-  const setFilter = (f: Filter) => setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
-  const [deliveryFilter, setDeliveryFilter] = useState('')
+  // A filter in the URL still wins, so shared/back-navigated links behave.
+  const filter: Filter = FILTERS.some((f) => f.key === filterParam) ? (filterParam as Filter) : savedFilter
+  const setFilter = (f: Filter) => {
+    setSavedFilter(f)
+    saveOrdersView({ filter: f })
+    setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
+  }
+  const [deliveryFilter, setDeliveryFilter] = useState(() => ordersView().delivery)
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
   const [printLoading, setPrintLoading] = useState(false)
+  const [resumeId, setResumeId] = useState(() => lastOrder()?.id ?? null)
+
+  const restoredScroll = useRef(false)
+
+  // Track the scroll offset while browsing; a frame throttle keeps it off the
+  // scroll hot path, and the flush persists whatever the last frame saw.
+  useEffect(() => {
+    let frame = 0
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        saveOrdersView({ scrollY: window.scrollY })
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', onScroll)
+      flushViewState()
+    }
+  }, [])
+
+  // Restore once, after the first render that has rows to scroll through.
+  useEffect(() => {
+    if (restoredScroll.current || isLoading) return
+    restoredScroll.current = true
+    const { scrollY } = ordersView()
+    if (scrollY > 0) window.scrollTo(0, scrollY)
+  }, [isLoading])
 
   const deliveryTypes = useMemo(() => {
     const types = new Set<string>()
@@ -77,6 +127,13 @@ export default function Orders() {
     })
   }, [orders, search, filter, deliveryFilter])
 
+  // Resolved against the loaded list, so a deleted order stops offering a jump
+  // back and the card always shows the order's current contact.
+  const resumeOrder = useMemo(
+    () => (resumeId ? (orders ?? []).find((o) => o.id === resumeId) : undefined),
+    [orders, resumeId],
+  )
+
   async function printOrders() {
     if (filtered.length === 0) return
     setPrintLoading(true)
@@ -91,11 +148,14 @@ export default function Orders() {
           .in('order_id', orderIds)
           .order('position', { ascending: true, nullsFirst: false })
           .order('created_at'),
-        supabase.from('items').select('id, name'),
+        supabase.from('items').select('id, name, fandom'),
       ])
 
-      const catalogMap = new Map<string, string>()
-      for (const item of catalog ?? []) catalogMap.set(item.id, item.name)
+      const catalogMap = new Map<string, { name: string; fandom: string | null }>()
+      for (const item of catalog ?? []) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
+
+      // Printouts follow the grouping toggle set on the order screen.
+      const groupByFandom = fandomGrouping()
 
       const itemsByOrder = new Map<string, OrderItem[]>()
       for (const item of (allItems ?? []) as OrderItem[]) {
@@ -108,17 +168,29 @@ export default function Orders() {
           const items = itemsByOrder.get(order.id) ?? []
           const linesTotal = items.reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0)
 
-          const itemRows = items
-            .map((l) => {
-              const name = l.item_id ? (catalogMap.get(l.item_id) ?? l.name_text ?? '—') : (l.name_text ?? '—')
-              return `<tr>
+          const rowsFor = (lines: OrderItem[]) =>
+            lines
+              .map((l) => {
+                const name = (l.item_id ? catalogMap.get(l.item_id)?.name : null) ?? l.name_text ?? '—'
+                return `<tr>
                 <td>${name}</td>
                 <td style="text-align:center">${l.qty}</td>
                 <td style="text-align:right">${formatRub(l.unit_price)}</td>
                 <td style="text-align:right">${formatRub((l.unit_price ?? 0) * l.qty)}</td>
               </tr>`
-            })
-            .join('')
+              })
+              .join('')
+
+          const groups = groupByFandom ? groupLinesByFandom(items, catalogMap) : []
+          const itemRows =
+            groups.length > 1
+              ? groups
+                  .map(
+                    (g) =>
+                      `<tr class="group"><td colspan="4">${g.fandom ?? NO_FANDOM_LABEL}</td></tr>${rowsFor(g.lines)}`,
+                  )
+                  .join('')
+              : rowsFor(items)
 
           const statusParts = [
             order.paid ? '✓ Paid' : '✗ Not paid',
@@ -178,6 +250,7 @@ export default function Orders() {
     table { width: 100%; border-collapse: collapse; margin: 6px 0 3px; }
     th { text-align: left; border-bottom: 1px solid #333; padding: 3px 6px 3px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
     td { padding: 3px 6px 3px 0; border-bottom: 1px solid #eee; font-size: 11px; }
+    tr.group td { padding-top: 7px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; color: #555; border-bottom: 1px solid #ccc; }
     .items-total { text-align: right; font-size: 10px; color: #666; }
     .order-total { text-align: right; font-weight: bold; font-size: 13px; margin-top: 2px; }
     .no-items { color: #aaa; font-size: 11px; margin: 4px 0; }
@@ -242,12 +315,40 @@ export default function Orders() {
         </div>
       </div>
 
+      {resumeOrder && (
+        <div className="mb-3 flex items-center gap-1 rounded-card border border-brand/25 bg-brand/5 p-1 pl-3.5 print:hidden">
+          <Link to={`/orders/${resumeOrder.id}`} className="tap flex min-h-11 min-w-0 flex-1 items-center gap-3">
+            <RotateCcw size={16} className="shrink-0 text-brand" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-brand">Continue where you left off</p>
+              <p className="truncate text-sm font-semibold">
+                {resumeOrder.telegram || resumeOrder.customer_email || 'no contact'}
+              </p>
+            </div>
+          </Link>
+          <button
+            onClick={() => {
+              haptic(5)
+              forgetOrder()
+              setResumeId(null)
+            }}
+            aria-label="Dismiss"
+            className="tap flex size-11 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div className="relative mb-3">
         <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
         <input
           placeholder="Search contact or items…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            saveOrdersView({ search: e.target.value })
+          }}
           className={`${inputClass} pl-11`}
         />
       </div>
@@ -265,7 +366,10 @@ export default function Orders() {
           <select
             className={`${inputClass} max-w-48 text-xs`}
             value={deliveryFilter}
-            onChange={(e) => setDeliveryFilter(e.target.value)}
+            onChange={(e) => {
+              setDeliveryFilter(e.target.value)
+              saveOrdersView({ delivery: e.target.value })
+            }}
           >
             <option value="">All delivery types</option>
             {deliveryTypes.map((t) => (
@@ -275,7 +379,13 @@ export default function Orders() {
             ))}
           </select>
           {deliveryFilter && (
-            <button onClick={() => setDeliveryFilter('')} className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink">
+            <button
+              onClick={() => {
+                setDeliveryFilter('')
+                saveOrdersView({ delivery: '' })
+              }}
+              className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink"
+            >
               Clear
             </button>
           )}
