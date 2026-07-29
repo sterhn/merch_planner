@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { fandomOf, groupLinesByFandom, NO_FANDOM_LABEL } from './fandom'
+import { fandomOf, groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from './orderLines'
 import type { OrderItem } from './types'
 
-function line(id: string, item_id: string | null, position: number): OrderItem {
+function line(
+  id: string,
+  item_id: string | null,
+  position: number,
+  unit_price: number | null = null,
+  qty = 1,
+): OrderItem {
   return {
     id,
     order_id: 'o1',
     item_id,
     name_text: null,
     category: null,
-    qty: 1,
-    unit_price: null,
+    qty,
+    unit_price,
     position,
     created_at: '2026-07-01T00:00:00Z',
   }
@@ -41,6 +47,47 @@ describe('fandomOf', () => {
   })
 })
 
+describe('sortLinesByPrice', () => {
+  it('puts the priciest line first', () => {
+    const sorted = sortLinesByPrice([
+      line('cheap', null, 0, 250),
+      line('dear', null, 1, 900),
+      line('mid', null, 2, 650),
+    ])
+    expect(sorted.map((l) => l.id)).toEqual(['dear', 'mid', 'cheap'])
+  })
+
+  it('sinks lines with no price to the bottom', () => {
+    const sorted = sortLinesByPrice([
+      line('free', null, 0, null),
+      line('zero', null, 1, 0),
+      line('paid', null, 2, 100),
+    ])
+    expect(sorted[0].id).toBe('paid')
+    expect(sorted.slice(1).map((l) => l.id)).toEqual(['free', 'zero'])
+  })
+
+  it('sorts on the unit price, not the line total', () => {
+    const sorted = sortLinesByPrice([line('bulk', null, 0, 400, 3), line('single', null, 1, 500)])
+    expect(sorted.map((l) => l.id)).toEqual(['single', 'bulk'])
+  })
+
+  it('breaks equal unit prices with the bigger line, then the stored position', () => {
+    const sorted = sortLinesByPrice([
+      line('later', null, 5, 300),
+      line('earlier', null, 1, 300),
+      line('two-up', null, 9, 300, 2),
+    ])
+    expect(sorted.map((l) => l.id)).toEqual(['two-up', 'earlier', 'later'])
+  })
+
+  it('leaves the input array untouched', () => {
+    const input = [line('a', null, 0, 100), line('b', null, 1, 900)]
+    sortLinesByPrice(input)
+    expect(input.map((l) => l.id)).toEqual(['a', 'b'])
+  })
+})
+
 describe('groupLinesByFandom', () => {
   it('groups by fandom and sorts the groups by name', () => {
     const groups = groupLinesByFandom(
@@ -51,9 +98,12 @@ describe('groupLinesByFandom', () => {
     expect(groups[1].lines.map((l) => l.id)).toEqual(['a', 'c'])
   })
 
-  it('keeps the given line order inside each group', () => {
-    const groups = groupLinesByFandom([line('c', 'orv2', 0), line('a', 'orv1', 1)], catalog)
-    expect(groups[0].lines.map((l) => l.id)).toEqual(['c', 'a'])
+  it('sorts each group priciest first', () => {
+    const groups = groupLinesByFandom(
+      [line('cheap', 'orv1', 0, 250), line('dear', 'orv2', 1, 900)],
+      catalog,
+    )
+    expect(groups[0].lines.map((l) => l.id)).toEqual(['dear', 'cheap'])
   })
 
   it('collects lines without a fandom into a trailing unnamed group', () => {
