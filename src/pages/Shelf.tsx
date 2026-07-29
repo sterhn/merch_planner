@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Plus, Store, Check, ReceiptText, Loader2 } from 'lucide-react'
+import { Store, Check, ReceiptText } from 'lucide-react'
 import type { Expense, ExpenseFeedRow, ShelfItem } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { currentMonth, formatRub } from '../lib/format'
+import { currentMonth, formatMonth, formatRub } from '../lib/format'
 import Modal from '../components/Modal'
-import EmptyState from '../components/EmptyState'
-import AnimatedNumber from '../components/AnimatedNumber'
-import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
-import { haptic } from '../lib/haptics'
+import PageHeader from '../components/PageHeader'
+import QueryState from '../components/QueryState'
+import StatTile from '../components/StatTile'
+import { AddButton, DangerButton, Field, inputClass, PrimaryButton, SecondaryButton } from '../components/FormField'
 
 const EMPTY = { name: '', price: '', month: '', qty_sent: '', qty_sold: '' }
 
@@ -26,13 +26,13 @@ function ShelfRow({ r, onClick }: { r: ShelfItem; onClick: () => void }) {
       <div className="min-w-0 flex-1">
         <p className={`truncate text-sm font-bold ${isInactive ? 'text-ink-faint' : 'text-ink'}`}>{r.name}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-xs text-ink-faint">{r.month ?? '—'}</p>
+          <p className="text-xs text-ink-faint">{r.month ? formatMonth(r.month) : '—'}</p>
           {sent > 0 && (
             <div className="flex items-center gap-1">
               <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
                 <div className="h-full rounded-full bg-good" style={{ width: `${sellRate}%` }} />
               </div>
-              <span className="text-[11px] text-ink-faint">{sellRate}%</span>
+              <span className="text-2xs text-ink-faint">{sellRate}%</span>
             </div>
           )}
         </div>
@@ -136,65 +136,45 @@ export default function Shelf() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl">Shelf</h1>
-        <button
-          onClick={() => {
-            haptic()
-            openEditor('new')
-          }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-        >
-          <Plus size={16} strokeWidth={3} />
-          Add position
-        </button>
-      </div>
+      <PageHeader title="Shelf">
+        <AddButton onClick={() => openEditor('new')}>Add position</AddButton>
+      </PageHeader>
 
       <div className="mb-4 flex items-center gap-2">
-        <select value={month} onChange={(e) => setMonth(e.target.value)} className={`${inputClass} !w-auto`}>
+        <select
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          aria-label="Filter by month"
+          className={`${inputClass} !w-auto`}
+        >
           <option value="all">All months</option>
           {months.map((m) => (
             <option key={m} value={m}>
-              {m}
+              {formatMonth(m)}
             </option>
           ))}
         </select>
-        <button
-          onClick={() => {
-            haptic()
-            setRentOpen(true)
-          }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand/40 px-4 text-sm font-bold text-brand hover:bg-brand/10"
-        >
+        <SecondaryButton onClick={() => setRentOpen(true)}>
           {rentLogged ? <Check size={15} strokeWidth={3} /> : <ReceiptText size={15} />}
           {rentLogged ? 'Rent logged' : 'Log rent'}
-        </button>
+        </SecondaryButton>
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-card border-l-4 border-l-brand bg-surface p-3 shadow-card">
-          <p className="font-display text-base text-brand">
-            <AnimatedNumber value={totals.sent} />
-          </p>
-          <p className="text-xs text-ink-faint">sent</p>
-        </div>
-        <div className="rounded-card border-l-4 border-l-good bg-surface p-3 shadow-card">
-          <p className="font-display text-base text-good">
-            <AnimatedNumber value={totals.sold} />
-          </p>
-          <p className="text-xs text-ink-faint">sold</p>
-        </div>
-        <div className="rounded-card border-l-4 border-l-good bg-surface p-3 shadow-card">
-          <p className="font-display text-base text-good">
-            <AnimatedNumber value={totals.income} format={formatRub} />
-          </p>
-          <p className="text-xs text-ink-faint">income</p>
-        </div>
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        <StatTile label="sent" value={totals.sent} tone="brand" index={0} />
+        <StatTile label="sold" value={totals.sold} tone="good" index={1} />
+        <StatTile label="income" value={totals.income} tone="good" format={formatRub} index={2} />
       </div>
 
-      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {isError && <EmptyState icon={Store} message="Failed to load shelf." onRetry={() => refetch()} />}
-      {!isLoading && !isError && filtered.length === 0 && <EmptyState icon={Store} message="No shelf positions yet." />}
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={filtered.length === 0}
+        icon={Store}
+        errorMessage="Failed to load shelf."
+        emptyMessage="No shelf positions yet."
+        onRetry={() => void refetch()}
+      />
 
       <div className="space-y-2">
         {filtered.map((r) => (

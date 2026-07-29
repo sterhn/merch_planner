@@ -69,7 +69,7 @@ export default function ExpenseChart({ months }: { months: MonthTotal[] }) {
 
   return (
     <section className="mb-5 animate-pop rounded-card bg-surface p-4 shadow-card">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-faint">Monthly expenses</p>
+      <p className="text-3xs font-bold uppercase tracking-widest text-ink-faint">Monthly expenses</p>
       <div className="mt-1 mb-2 flex items-baseline justify-between gap-2">
         <p className="font-display text-sm">{formatMonth(active.month)}</p>
         <p className="font-display text-sm text-bad">−{formatRub(active.total)}</p>

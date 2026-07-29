@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { formatRub } from '../lib/format'
 import FilterChip from './FilterChip'
-import { inputClass } from './FormField'
+import SearchInput from './SearchInput'
 
 export default function CatalogPicker({ catalog, value, onSelect, stockFor, allowCustom = true, customLabel = '— custom item —' }: {
   catalog: Item[]
@@ -44,15 +43,7 @@ export default function CatalogPicker({ catalog, value, onSelect, stockFor, allo
 
   return (
     <div>
-      <div className="relative mb-2">
-        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
-        <input
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${inputClass} pl-9`}
-        />
-      </div>
+      <SearchInput className="mb-2" label="Search items" value={search} onChange={setSearch} />
       {types.length > 0 && (
         <div className="mb-1.5 flex gap-1.5 overflow-x-auto pb-1">
           {[null, ...types].map((t) => (
@@ -98,7 +89,7 @@ export default function CatalogPicker({ catalog, value, onSelect, stockFor, allo
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{item.name}</p>
                 {stock !== undefined && (
-                  <p className={`text-[11px] ${stock <= 0 ? 'font-bold text-bad' : 'text-ink-faint'}`}>
+                  <p className={`text-2xs ${stock <= 0 ? 'font-bold text-bad' : 'text-ink-faint'}`}>
                     {stock <= 0 ? 'out of stock' : `${stock} left`}
                   </p>
                 )}

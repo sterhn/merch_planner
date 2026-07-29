@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  Plus,
   Trash2,
   Store,
   Package2,
@@ -8,7 +7,6 @@ import {
   MoreHorizontal,
   Printer,
   Receipt,
-  Loader2,
   type LucideIcon,
 } from 'lucide-react'
 import type { Expense, ExpenseFeedRow } from '../lib/types'
@@ -17,9 +15,10 @@ import { useDelete, useInsert, useList } from '../hooks/useTable'
 import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
-import EmptyState from '../components/EmptyState'
+import PageHeader from '../components/PageHeader'
+import QueryState from '../components/QueryState'
 import SwipeableRow from '../components/SwipeableRow'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -52,11 +51,13 @@ export default function Expenses() {
   })
 
   const byMonth = useMemo(() => {
-    const groups = new Map<string, ExpenseFeedRow[]>()
+    const groups = new Map<string, { rows: ExpenseFeedRow[]; total: number }>()
     for (const row of feed ?? []) {
       const key = monthKey(row.date)
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(row)
+      let group = groups.get(key)
+      if (!group) groups.set(key, (group = { rows: [], total: 0 }))
+      group.rows.push(row)
+      group.total += row.amount
     }
     return Array.from(groups.entries())
   }, [feed])
@@ -96,33 +97,27 @@ export default function Expenses() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl">Expenses</h1>
-        <button
-          onClick={() => {
-            haptic()
-            setAdding(true)
-          }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-        >
-          <Plus size={16} strokeWidth={3} />
-          Add expense
-        </button>
-      </div>
+      <PageHeader title="Expenses">
+        <AddButton onClick={() => setAdding(true)}>Add expense</AddButton>
+      </PageHeader>
 
-      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {isError && <EmptyState icon={Receipt} message="Failed to load expenses." onRetry={() => refetch()} />}
-      {!isLoading && !isError && (feed ?? []).length === 0 && <EmptyState icon={Receipt} message="No expenses yet." />}
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={(feed ?? []).length === 0}
+        icon={Receipt}
+        errorMessage="Failed to load expenses."
+        emptyMessage="No expenses yet."
+        onRetry={() => void refetch()}
+      />
 
       {monthlyTotals.length > 0 && <ExpenseChart months={monthlyTotals} />}
 
-      {byMonth.map(([month, rows]) => (
+      {byMonth.map(([month, { rows, total }]) => (
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="font-display text-sm text-ink-muted">{formatMonth(month)}</h2>
-            <span className="font-display text-sm text-bad">
-              −{formatRub(rows.reduce((s, r) => s + r.amount, 0))}
-            </span>
+            <span className="font-display text-sm text-bad">−{formatRub(total)}</span>
           </div>
           <div className="space-y-2">
             {rows.map((row) => {
@@ -139,7 +134,7 @@ export default function Expenses() {
                     <p className="text-xs text-ink-muted">
                       {formatDate(row.date)} · {CATEGORY_LABELS[row.category] ?? row.category}
                       {row.source === 'collect' && (
-                        <span className="ml-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold text-brand">
+                        <span className="ml-1 rounded-full bg-brand/10 px-2 py-0.5 text-3xs font-bold text-brand">
                           from collects
                         </span>
                       )}
@@ -148,13 +143,13 @@ export default function Expenses() {
                   <div className="flex shrink-0 items-center gap-1">
                     <span className="font-display text-sm">{formatRub(row.amount)}</span>
                     {row.source === 'manual' && (
-                      <button
+                      <IconButton
+                        icon={Trash2}
+                        size={10}
+                        tone="danger"
+                        label={`Delete ${row.description || CATEGORY_LABELS[row.category] || row.category}`}
                         onClick={() => confirmDelete(row.id)}
-                        className="tap flex size-10 items-center justify-center rounded-full text-ink-faint hover:text-bad"
-                        aria-label="Delete"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      />
                     )}
                   </div>
                 </div>

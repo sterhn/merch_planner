@@ -21,7 +21,7 @@ A small web app for tracking a merch shop: **orders, catalog, collects (producti
 1. In your Supabase project, open **SQL Editor** (left sidebar).
 2. Open the file [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) from this repo, copy **all** of it, paste into the editor, press **Run**.
 3. You should see "Success. No rows returned".
-4. Repeat for each remaining file in [`supabase/migrations/`](supabase/migrations/) in numeric order (`002` through `007`). Each file starts with a comment saying what it adds.
+4. Repeat for each remaining file in [`supabase/migrations/`](supabase/migrations/) in numeric order (`002` onwards). Each file starts with a comment saying what it adds.
 
 > **Already set up earlier?** Only run the migration files you haven't run yet, in numeric order.
 

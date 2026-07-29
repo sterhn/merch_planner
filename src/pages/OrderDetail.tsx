@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Printer, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -18,7 +18,17 @@ import StatusBadge from '../components/StatusBadge'
 import CatalogPicker from '../components/CatalogPicker'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
-import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
+import OrderStatus from '../components/OrderStatus'
+import PageHeader from '../components/PageHeader'
+import {
+  AddButton,
+  DangerButton,
+  Field,
+  IconButton,
+  inputClass,
+  PrimaryButton,
+  textareaClass,
+} from '../components/FormField'
 
 function HeaderForm({
   order,
@@ -102,7 +112,7 @@ export default function OrderDetail() {
     enabled: Boolean(id),
   })
 
-  const { data: lines } = useQuery({
+  const { data: lines, isLoading: linesLoading } = useQuery({
     queryKey: ['order_items', id],
     queryFn: async (): Promise<OrderItem[]> => {
       const { data, error } = await supabase
@@ -429,18 +439,16 @@ export default function OrderDetail() {
           </div>
           <span className="shrink-0 text-sm font-semibold">{formatRub(l.unit_price)}</span>
         </button>
-        <button
+        <IconButton
+          icon={Trash2}
+          size={10}
+          tone="danger"
+          label={`Remove ${catalogItem?.name ?? l.name_text ?? 'item'}`}
+          className="print:hidden"
           onClick={() => {
-            if (confirm('Remove this item?'))
-              deleteLine.mutate(l.id, {
-                onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
-              })
+            if (confirm('Remove this item?')) deleteLine.mutate(l.id)
           }}
-          className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad print:hidden"
-          aria-label="Remove"
-        >
-          <Trash2 size={16} />
-        </button>
+        />
       </li>
     )
   }
@@ -455,29 +463,17 @@ export default function OrderDetail() {
         Back to orders
       </button>
 
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate font-display text-xl">{order.telegram || order.customer_email || 'Order'}</h1>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            onClick={exportImage}
-            disabled={exporting}
-            aria-label="Share as image"
-            title="Share as image"
-            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink print:hidden"
-          >
-            {exporting ? <Loader2 size={18} className="animate-spin" /> : <ImageDown size={18} />}
-          </button>
-          <button
-            onClick={printOrder}
-            aria-label="Print / PDF"
-            title="Print / PDF"
-            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink print:hidden"
-          >
-            <Printer size={18} />
-          </button>
-          <span className="font-display text-lg">{formatRub(order.total_price)}</span>
-        </div>
-      </div>
+      <PageHeader title={order.telegram || order.customer_email || 'Order'}>
+        <IconButton
+          icon={exporting ? Loader2 : ImageDown}
+          label="Share as image"
+          onClick={exportImage}
+          disabled={exporting}
+          className={`print:hidden ${exporting ? '[&_svg]:animate-spin' : ''}`}
+        />
+        <IconButton icon={Printer} label="Print / PDF" onClick={printOrder} className="print:hidden" />
+        <span className="font-display text-lg">{formatRub(order.total_price)}</span>
+      </PageHeader>
 
       <div className="mb-5 flex gap-2 *:flex-1 print:hidden">
         <StatusBadge on={order.paid} label="paid" onClick={() => toggle('paid')} />
@@ -513,19 +509,12 @@ export default function OrderDetail() {
               <ClipboardPaste size={15} />
               Import
             </button>
-            <button
-              onClick={() => {
-                haptic()
-                setAddingLine(true)
-              }}
-              className="tap flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-            >
-              <Plus size={15} strokeWidth={3} />
-              Add item
-            </button>
+            <AddButton onClick={() => setAddingLine(true)}>Add item</AddButton>
           </div>
         </div>
-        {(lines ?? []).length === 0 && <p className="py-3 text-sm text-ink-faint">No items.</p>}
+        {(lines ?? []).length === 0 && (
+          <p className="py-3 text-sm text-ink-faint">{linesLoading ? 'Loading…' : 'No items.'}</p>
+        )}
         {grouped ? (
           <div>
             {fandomGroups.map((g) => (
@@ -579,13 +568,9 @@ export default function OrderDetail() {
                 <Link to={`/orders/${p.id}`} className="tap flex min-h-11 items-center justify-between gap-2 py-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">{formatDate(p.created_at)}</p>
-                    <p
-                      className={`text-xs font-bold ${
-                        p.delivered ? 'text-good' : p.sent ? 'text-accent' : p.paid ? 'text-brand' : 'text-bad'
-                      }`}
-                    >
-                      {p.delivered ? 'Delivered' : p.sent ? 'Shipped' : p.paid ? 'Awaiting shipment' : 'Unpaid'}
-                    </p>
+                    <div className="mt-0.5">
+                      <OrderStatus paid={p.paid} sent={p.sent} delivered={p.delivered} />
+                    </div>
                   </div>
                   <span className="shrink-0 font-display text-sm">{formatRub(p.total_price)}</span>
                 </Link>

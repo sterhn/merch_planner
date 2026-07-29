@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Search, PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
+import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatRub } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import EmptyState from '../components/EmptyState'
 import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
+import OrderStatus from '../components/OrderStatus'
+import PageHeader from '../components/PageHeader'
+import QueryState from '../components/QueryState'
+import SearchInput from '../components/SearchInput'
 import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
-import { Field, inputClass, PrimaryButton } from '../components/FormField'
+import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
 import {
@@ -30,13 +33,6 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
-
-function OrderStatus({ paid, sent, delivered }: { paid: boolean; sent: boolean; delivered: boolean }) {
-  if (delivered) return <span className="rounded-full bg-good/15 px-2.5 py-0.5 text-xs font-bold text-good">Delivered</span>
-  if (sent) return <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-bold text-accent">Shipped</span>
-  if (paid) return <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">Awaiting shipment</span>
-  return <span className="rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-bold text-bad">Unpaid</span>
-}
 
 export default function Orders() {
   const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
@@ -290,30 +286,16 @@ export default function Orders() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl">Orders</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={printOrders}
-            disabled={printLoading || filtered.length === 0}
-            aria-label="Print orders"
-            title="Print orders"
-            className="tap flex size-11 items-center justify-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink disabled:opacity-40"
-          >
-            {printLoading ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
-          </button>
-          <button
-            onClick={() => {
-              haptic()
-              setAdding(true)
-            }}
-            className="tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-          >
-            <Plus size={16} strokeWidth={3} />
-            New order
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Orders">
+        <IconButton
+          icon={printLoading ? Loader2 : Printer}
+          label="Print orders"
+          onClick={printOrders}
+          disabled={printLoading || filtered.length === 0}
+          className={printLoading ? '[&_svg]:animate-spin' : ''}
+        />
+        <AddButton onClick={() => setAdding(true)}>New order</AddButton>
+      </PageHeader>
 
       {resumeOrder && (
         <div className="mb-3 flex items-center gap-1 rounded-card border border-brand/25 bg-brand/5 p-1 pl-3.5 print:hidden">
@@ -326,32 +308,28 @@ export default function Orders() {
               </p>
             </div>
           </Link>
-          <button
+          <IconButton
+            icon={X}
+            label="Dismiss"
             onClick={() => {
               haptic(5)
               forgetOrder()
               setResumeId(null)
             }}
-            aria-label="Dismiss"
-            className="tap flex size-11 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-ink"
-          >
-            <X size={16} />
-          </button>
+          />
         </div>
       )}
 
-      <div className="relative mb-3">
-        <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-        <input
-          placeholder="Search contact or items…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            saveOrdersView({ search: e.target.value })
-          }}
-          className={`${inputClass} pl-11`}
-        />
-      </div>
+      <SearchInput
+        className="mb-3"
+        label="Search orders"
+        placeholder="Search contact or items…"
+        value={search}
+        onChange={(value) => {
+          setSearch(value)
+          saveOrdersView({ search: value })
+        }}
+      />
 
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
@@ -365,6 +343,7 @@ export default function Orders() {
         <div className="mb-4 flex items-center gap-2">
           <select
             className={`${inputClass} max-w-48 text-xs`}
+            aria-label="Filter by delivery type"
             value={deliveryFilter}
             onChange={(e) => {
               setDeliveryFilter(e.target.value)
@@ -392,11 +371,16 @@ export default function Orders() {
         </div>
       )}
 
-      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {isError && <EmptyState icon={PackageOpen} message="Failed to load orders." onRetry={() => refetch()} />}
-      {!isLoading && !isError && filtered.length === 0 && (
-        <EmptyState icon={PackageOpen} message="No orders found." hint="Swipe left to advance status, right to delete." />
-      )}
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={filtered.length === 0}
+        icon={PackageOpen}
+        errorMessage="Failed to load orders."
+        emptyMessage="No orders found."
+        emptyHint="Swipe left to advance status, right to delete."
+        onRetry={() => void refetch()}
+      />
 
       <div className="space-y-2">
         {filtered.map((o) => {
@@ -464,25 +448,21 @@ export default function Orders() {
                     to delete or advance an order on a laptop would be to open it. */}
                 <div className="hidden shrink-0 items-center gap-0.5 pr-2 md:flex">
                   {advance && AdvanceIcon && (
-                    <button
-                      type="button"
+                    <IconButton
+                      icon={AdvanceIcon}
+                      size={10}
+                      tone="good"
+                      label={`Mark ${who} as ${advance.label}`}
                       onClick={advance.onAction}
-                      aria-label={`Mark ${who} as ${advance.label}`}
-                      title={`Mark as ${advance.label}`}
-                      className="tap grid size-10 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-good"
-                    >
-                      <AdvanceIcon size={17} />
-                    </button>
+                    />
                   )}
-                  <button
-                    type="button"
+                  <IconButton
+                    icon={Trash2}
+                    size={10}
+                    tone="danger"
+                    label={`Delete order from ${who}`}
                     onClick={onDelete}
-                    aria-label={`Delete order from ${who}`}
-                    title="Delete order"
-                    className="tap grid size-10 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-bad"
-                  >
-                    <Trash2 size={17} />
-                  </button>
+                  />
                 </div>
               </div>
             </SwipeableRow>

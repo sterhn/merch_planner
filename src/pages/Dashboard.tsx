@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ChevronLeft, ChevronRight, LayoutDashboard, Loader2, LogOut } from 'lucide-react'
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, LayoutDashboard, Loader2, LogOut } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
 import { useSignOut } from '../hooks/useAuth'
@@ -8,6 +8,9 @@ import EmptyState from '../components/EmptyState'
 import { currentMonth, formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate } from '../lib/format'
 import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
+import Card from '../components/Card'
+import PageHeader from '../components/PageHeader'
+import StatTile from '../components/StatTile'
 
 const MONTH_KEY = /^\d{4}-\d{2}$/
 
@@ -41,24 +44,6 @@ function HeroCard({ value, isPositive }: { value: number; isPositive: boolean })
           deficit
         </span>
       )}
-    </div>
-  )
-}
-
-function MetricCard({ label, value, tone, index }: {
-  label: string; value: number; tone?: 'success' | 'danger' | 'brand'; index: number
-}) {
-  const border = tone === 'success' ? 'border-l-good' : tone === 'danger' ? 'border-l-bad' : 'border-l-brand'
-  const text = tone === 'success' ? 'text-good' : tone === 'danger' ? 'text-bad' : 'text-brand'
-  return (
-    <div
-      className={`animate-pop rounded-card border-l-4 ${border} bg-surface p-3 shadow-card`}
-      style={{ animationDelay: `${(index + 1) * 60}ms` }}
-    >
-      <p className={`font-display text-base leading-tight ${text}`}>
-        <AnimatedNumber value={value} format={formatRub} />
-      </p>
-      <p className="mt-0.5 text-[11px] text-ink-faint">{label}</p>
     </div>
   )
 }
@@ -184,10 +169,9 @@ export default function Dashboard() {
   if (isLoading || isError) {
     return (
       <div>
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <h1 className="font-display text-2xl">Dashboard</h1>
+        <PageHeader title="Dashboard">
           <SignOutButton />
-        </div>
+        </PageHeader>
         {isError ? (
           <EmptyState
             icon={LayoutDashboard}
@@ -203,8 +187,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="font-display text-2xl">Dashboard</h1>
+      <PageHeader title="Dashboard">
         <div className="flex items-center">
           <SignOutButton />
           <button
@@ -229,14 +212,14 @@ export default function Dashboard() {
             <ChevronRight size={20} />
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       <div className="mb-3 flex flex-col gap-2">
         <HeroCard value={stats.net} isPositive={stats.net >= 0} />
         <div className="grid grid-cols-3 gap-2">
-          <MetricCard label="Revenue" value={stats.orderRevenue} tone="success" index={0} />
-          <MetricCard label="Expenses" value={stats.totalExpenses} tone="danger" index={1} />
-          <MetricCard label="Shelf" value={stats.shelfIncome} tone="brand" index={2} />
+          <StatTile label="Revenue" value={stats.orderRevenue} tone="good" format={formatRub} index={0} />
+          <StatTile label="Expenses" value={stats.totalExpenses} tone="bad" format={formatRub} index={1} />
+          <StatTile label="Shelf" value={stats.shelfIncome} tone="brand" format={formatRub} index={2} />
         </div>
       </div>
 
@@ -249,25 +232,23 @@ export default function Dashboard() {
 
       <div className="mb-4 space-y-2">
         {topSeller && (
-          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '420ms' }}>
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-faint">Top seller</p>
+          <Card title="Top seller" className="animate-pop" style={{ animationDelay: '420ms' }}>
             <p className="truncate text-sm font-bold">{topSeller.name}</p>
             <p className="text-xs text-ink-muted">
               <span className="font-bold text-good">{topSeller.qty_sold} sold</span> · {formatRub(topSeller.income)}
             </p>
-          </div>
+          </Card>
         )}
 
         {lowStock.length > 0 && (
-          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '480ms' }}>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-ink-faint">Low stock alert</p>
+          <Card title="Low stock alert" className="animate-pop" style={{ animationDelay: '480ms' }}>
             <div className="space-y-1.5">
               {lowStock.map((i) => (
                 <div key={i.id} className="flex items-center justify-between gap-2">
                   <p className="min-w-0 truncate text-sm">{i.name}</p>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                      (i.stock_qty ?? 0) <= 0 ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
+                      (i.stock_qty ?? 0) <= 0 ? 'bg-bad/15 text-bad' : 'bg-sun/30 text-ink'
                     }`}
                   >
                     {i.stock_qty} left
@@ -275,15 +256,20 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
         {recentOrders.length > 0 && (
-          <div className="animate-pop rounded-card bg-surface p-4 shadow-card" style={{ animationDelay: '540ms' }}>
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-ink-faint">Recent orders</p>
-              <Link to="/orders" className="text-xs font-bold text-brand">View all</Link>
-            </div>
+          <Card
+            title="Recent orders"
+            action={
+              <Link to="/orders" className="text-xs font-bold text-brand">
+                View all
+              </Link>
+            }
+            className="animate-pop"
+            style={{ animationDelay: '540ms' }}
+          >
             <div className="divide-y divide-line">
               {recentOrders.map((o) => (
                 <Link key={o.id} to={`/orders/${o.id}`} className="tap flex items-center justify-between py-2">
@@ -292,18 +278,16 @@ export default function Dashboard() {
                 </Link>
               ))}
             </div>
-          </div>
+          </Card>
         )}
       </div>
 
       <section>
         <h2 className="mb-2 text-sm font-bold text-ink-muted">Upcoming collect deadlines</h2>
         {upcoming.length === 0 ? (
-          <div className="animate-pop rounded-card bg-surface p-8 text-center shadow-card">
-            <p className="text-3xl leading-none">✧</p>
-            <p className="mt-2 text-sm font-bold text-ink">All caught up!</p>
-            <p className="text-xs text-ink-faint">No upcoming deadlines.</p>
-          </div>
+          <Card className="animate-pop">
+            <EmptyState icon={CalendarCheck} message="All caught up!" hint="No upcoming deadlines." />
+          </Card>
         ) : (
           <div className="space-y-2">
             {upcoming.map((c) => (
@@ -318,7 +302,7 @@ export default function Dashboard() {
                 </div>
                 <span
                   className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
-                    c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/20 text-ink'
+                    c.urgent ? 'bg-bad/15 text-bad' : 'bg-sun/30 text-ink'
                   }`}
                 >
                   <CalendarClock size={13} />

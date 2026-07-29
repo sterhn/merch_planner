@@ -26,7 +26,7 @@ export default function StatusBadge({
     )
   }
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-2xs font-bold ${cls}`}>
       {on && <Check size={11} strokeWidth={3} />}
       {label}
     </span>

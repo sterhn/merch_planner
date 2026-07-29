@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Tags, Loader2 } from 'lucide-react'
+import { Plus, Tags, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -9,9 +9,19 @@ import { supabase } from '../lib/supabase'
 import { formatRub } from '../lib/format'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
-import EmptyState from '../components/EmptyState'
 import FilterChip from '../components/FilterChip'
-import { DangerButton, Field, inputClass, PrimaryButton, textareaClass } from '../components/FormField'
+import PageHeader from '../components/PageHeader'
+import QueryState from '../components/QueryState'
+import SearchInput from '../components/SearchInput'
+import {
+  AddButton,
+  DangerButton,
+  Field,
+  IconButton,
+  inputClass,
+  PrimaryButton,
+  textareaClass,
+} from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '', product_photo_url: '' }
@@ -44,16 +54,7 @@ function PhotoField({ label, url, file, onPick, onClear, pct, alt }: {
           onChange={(e) => onPick(e.target.files?.[0] ?? null)}
           className="min-w-0 flex-1 text-xs text-ink-muted file:mr-2 file:rounded-full file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand"
         />
-        {(file || url) && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
-            aria-label="Remove photo"
-          >
-            ✕
-          </button>
-        )}
+        {(file || url) && <IconButton icon={X} size={10} tone="danger" label="Remove photo" onClick={onClear} />}
       </div>
       {pct !== null && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={Math.round(pct * 100)} aria-valuemin={0} aria-valuemax={100}>
@@ -320,28 +321,10 @@ export default function Catalog() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl">Catalog</h1>
-        <button
-          onClick={() => {
-            haptic()
-            openEditor('new')
-          }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-        >
-          <Plus size={16} strokeWidth={3} />
-          Add item
-        </button>
-      </div>
-      <div className="relative mb-3">
-        <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-        <input
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${inputClass} pl-11`}
-        />
-      </div>
+      <PageHeader title="Catalog">
+        <AddButton onClick={() => openEditor('new')}>Add item</AddButton>
+      </PageHeader>
+      <SearchInput className="mb-3" label="Search catalog" value={search} onChange={setSearch} />
 
       {types.length > 0 && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
@@ -361,9 +344,15 @@ export default function Catalog() {
         </div>
       )}
 
-      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {isError && <EmptyState icon={Tags} message="Failed to load catalog." onRetry={() => refetch()} />}
-      {!isLoading && !isError && filtered.length === 0 && <EmptyState icon={Tags} message="No items yet." />}
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={filtered.length === 0}
+        icon={Tags}
+        errorMessage="Failed to load catalog."
+        emptyMessage="No items yet."
+        onRetry={() => void refetch()}
+      />
 
       <div className="space-y-2">
         {filtered.map((item) => {
@@ -501,17 +490,16 @@ export default function Catalog() {
                       }
                     />
                   </div>
-                  <button
-                    type="button"
+                  <IconButton
+                    icon={X}
+                    size={10}
+                    tone="danger"
+                    label="Remove component"
                     onClick={() => {
                       haptic()
                       setBundleRows(bundleRows.filter((_, j) => j !== i))
                     }}
-                    className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
-                    aria-label="Remove component"
-                  >
-                    ✕
-                  </button>
+                  />
                 </div>
               ))}
               <button

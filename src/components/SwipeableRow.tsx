@@ -120,7 +120,7 @@ export default function SwipeableRow({
         >
           <span className="flex flex-col items-center gap-0.5">
             <Icon size={20} />
-            <span className="text-[10px] font-bold">{active.label}</span>
+            <span className="text-3xs font-bold">{active.label}</span>
           </span>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Printer, AlertTriangle, CalendarClock, Loader2, PackageCheck } from 'lucide-react'
+import { Plus, Printer, AlertTriangle, CalendarClock, PackageCheck, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Collect, CollectItem, Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -8,9 +8,18 @@ import { formatDate, formatRub, todayISO } from '../lib/format'
 import { showToast } from '../lib/toast'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
-import EmptyState from '../components/EmptyState'
+import PageHeader from '../components/PageHeader'
+import QueryState from '../components/QueryState'
 import StatusBadge from '../components/StatusBadge'
-import { DangerButton, Field, inputClass, PrimaryButton } from '../components/FormField'
+import {
+  AddButton,
+  DangerButton,
+  Field,
+  IconButton,
+  inputClass,
+  PrimaryButton,
+  SecondaryButton,
+} from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
 const EMPTY = { name: '', vendor: '', commission: '', delivery_cost: '', deadline: '', paid: false }
@@ -237,23 +246,19 @@ export default function Collects() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl">Collects</h1>
-        <button
-          onClick={() => {
-            haptic()
-            openEditor('new')
-          }}
-          className="tap flex min-h-11 items-center gap-1.5 rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
-        >
-          <Plus size={16} strokeWidth={3} />
-          Add collect
-        </button>
-      </div>
+      <PageHeader title="Collects">
+        <AddButton onClick={() => openEditor('new')}>Add collect</AddButton>
+      </PageHeader>
 
-      {isLoading && <EmptyState icon={Loader2} spin message="Loading…" />}
-      {isError && <EmptyState icon={Printer} message="Failed to load collects." onRetry={() => refetch()} />}
-      {!isLoading && !isError && (collects ?? []).length === 0 && <EmptyState icon={Printer} message="No production runs yet." />}
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={(collects ?? []).length === 0}
+        icon={Printer}
+        errorMessage="Failed to load collects."
+        emptyMessage="No production runs yet."
+        onRetry={() => void refetch()}
+      />
 
       <div className="space-y-2">
         {(collects ?? []).map((c) => {
@@ -336,17 +341,16 @@ export default function Collects() {
                         {row.item_id ? (itemById.get(row.item_id)?.name ?? '?') : '＋ new item — tap to pick existing'}
                       </span>
                     </button>
-                    <button
-                      type="button"
+                    <IconButton
+                      icon={X}
+                      size={10}
+                      tone="danger"
+                      label="Remove position"
                       onClick={() => {
                         haptic()
                         setPositions(positions.filter((_, j) => j !== i))
                       }}
-                      className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad"
-                      aria-label="Remove position"
-                    >
-                      ✕
-                    </button>
+                    />
                   </div>
                   {row.item_id === '' && (
                     <input
@@ -360,7 +364,7 @@ export default function Collects() {
                   )}
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block">
-                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-ink-faint">Qty</span>
+                      <span className="mb-0.5 block text-3xs font-bold uppercase tracking-wider text-ink-faint">Qty</span>
                       <input
                         type="number"
                         min={1}
@@ -373,7 +377,7 @@ export default function Collects() {
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-ink-faint">Print ₽/pc</span>
+                      <span className="mb-0.5 block text-3xs font-bold uppercase tracking-wider text-ink-faint">Print ₽/pc</span>
                       <input
                         type="number"
                         min={0}
@@ -430,18 +434,15 @@ export default function Collects() {
             </p>
           ) : (
             hasPositions && (
-              <button
-                type="button"
-                onClick={() => {
-                  haptic()
-                  void receive()
-                }}
+              <SecondaryButton
+                tone="good"
+                onClick={() => void receive()}
                 disabled={receiveBusy || insert.isPending || update.isPending}
-                className="tap mt-2 flex h-12 w-full items-center justify-center gap-1.5 rounded-full border-2 border-good/50 text-sm font-bold text-good hover:bg-good/10 disabled:opacity-50"
+                className="mt-2 h-12 w-full"
               >
                 <PackageCheck size={16} />
                 {receiveBusy ? 'Adding to catalog…' : 'Received — add to catalog'}
-              </button>
+              </SecondaryButton>
             )
           )}
           {formError && (
