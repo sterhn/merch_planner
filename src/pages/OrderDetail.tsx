@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowUpDown, ChevronDown, ChevronUp, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Plus, Printer, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -12,7 +12,7 @@ import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
-import { groupLinesByFandom, NO_FANDOM_LABEL } from '../lib/fandom'
+import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
 import { fandomGrouping, rememberOrder, setFandomGrouping } from '../lib/viewState'
 import StatusBadge from '../components/StatusBadge'
 import CatalogPicker from '../components/CatalogPicker'
@@ -151,7 +151,6 @@ export default function OrderDetail() {
   const [addingLine, setAddingLine] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [lineForm, setLineForm] = useState({ item_id: '', name_text: '', qty: '1', unit_price: '' })
-  const [reordering, setReordering] = useState(false)
   const [editingLine, setEditingLine] = useState<OrderItem | null>(null)
   const [editForm, setEditForm] = useState({ name_text: '', qty: '1', unit_price: '' })
   const [importing, setImporting] = useState(false)
@@ -173,12 +172,9 @@ export default function OrderDetail() {
 
   const bundleGroups = useMemo(() => groupBundles(rawBundles), [rawBundles])
 
+  // Items always read priciest first, grouped or not.
+  const orderedLines = useMemo(() => sortLinesByPrice(lines ?? []), [lines])
   const fandomGroups = useMemo(() => groupLinesByFandom(lines ?? [], itemNames), [lines, itemNames])
-  // Position of each line in the flat list, so grouped rows can still be moved.
-  const flatIndex = useMemo(
-    () => new Map((lines ?? []).map((l, i) => [l.id, i] as const)),
-    [lines],
-  )
 
   const linesTotal = useMemo(
     () => (lines ?? []).reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0),
@@ -194,9 +190,7 @@ export default function OrderDetail() {
 
   // Grouping is only worth offering when the order spans several fandoms.
   const canGroup = fandomGroups.length > 1
-  const groupOutput = grouping && canGroup
-  // Reordering works on the flat list, so it takes over while it is on.
-  const groupedList = groupOutput && !reordering
+  const grouped = grouping && canGroup
 
   if (orderMissing)
     return (
@@ -286,7 +280,7 @@ export default function OrderDetail() {
     haptic()
     setExporting(true)
     try {
-      const blobs = await renderOrderImage(order!, lines ?? [], itemNames, { groupByFandom: groupOutput })
+      const blobs = await renderOrderImage(order!, orderedLines, itemNames, { groupByFandom: grouped })
       const safeName = (order!.telegram || order!.customer_email || 'order').replace(/[^\w@.а-яё-]+/gi, '_')
       const result = await shareOrderImage(blobs, safeName)
       if (result === 'saved') showToast(blobs.length > 1 ? `${blobs.length} images saved` : 'Image saved')
@@ -294,27 +288,6 @@ export default function OrderDetail() {
       showToast('Could not create the image')
     } finally {
       setExporting(false)
-    }
-  }
-
-  async function moveLine(index: number, dir: -1 | 1) {
-    const current = lines ?? []
-    const target = index + dir
-    if (target < 0 || target >= current.length) return
-    haptic()
-    const next = [...current]
-    ;[next[index], next[target]] = [next[target], next[index]]
-    const renumbered = next.map((l, i) => ({ ...l, position: i }))
-    // Optimistic: show the new order right away, then persist every changed
-    // position (the first move also renumbers legacy null positions).
-    qc.setQueryData<OrderItem[]>(['order_items', id], renumbered)
-    const changed = renumbered.filter((l) => current.find((c) => c.id === l.id)?.position !== l.position)
-    const results = await Promise.all(
-      changed.map((l) => supabase.from('order_items').update({ position: l.position }).eq('id', l.id)),
-    )
-    if (results.some((r) => r.error)) {
-      showToast('Could not save the new order')
-      qc.invalidateQueries({ queryKey: ['order_items', id] })
     }
   }
 
@@ -366,11 +339,11 @@ export default function OrderDetail() {
         .join('')
 
     // The printout follows the on-screen grouping toggle.
-    const itemRows = groupOutput
+    const itemRows = grouped
       ? fandomGroups
           .map((g) => `<tr class="group"><td colspan="4">${g.fandom ?? NO_FANDOM_LABEL}</td></tr>${rowsFor(g.lines)}`)
           .join('')
-      : rowsFor(lines ?? [])
+      : rowsFor(orderedLines)
 
     const extraInfo = [
       order!.delivery_method ? `<p><strong>Delivery:</strong> ${order!.delivery_method}</p>` : '',
@@ -430,9 +403,7 @@ export default function OrderDetail() {
     }
   }
 
-  /** One item row. `index` is the line's position in the flat list, which the
-   *  reorder arrows move it within — grouped rows pass their flat index too. */
-  function renderLine(l: OrderItem, index: number) {
+  function renderLine(l: OrderItem) {
     const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
     // Imported lines carry the store's type; manual lines fall back to the
     // catalog item's type so the note shows either way.
@@ -441,7 +412,7 @@ export default function OrderDetail() {
       <li key={l.id} className="flex items-center gap-2 py-2">
         <button
           type="button"
-          onClick={() => !reordering && openLineEdit(l)}
+          onClick={() => openLineEdit(l)}
           className="tap flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
           aria-label={`Edit ${catalogItem?.name ?? l.name_text ?? 'item'}`}
         >
@@ -458,39 +429,18 @@ export default function OrderDetail() {
           </div>
           <span className="shrink-0 text-sm font-semibold">{formatRub(l.unit_price)}</span>
         </button>
-        {reordering ? (
-          <div className="flex shrink-0 items-center print:hidden">
-            <button
-              onClick={() => moveLine(index, -1)}
-              disabled={index === 0}
-              className="tap flex size-10 items-center justify-center rounded-full text-ink-muted disabled:opacity-25"
-              aria-label="Move up"
-            >
-              <ChevronUp size={18} />
-            </button>
-            <button
-              onClick={() => moveLine(index, 1)}
-              disabled={index === (lines?.length ?? 0) - 1}
-              className="tap flex size-10 items-center justify-center rounded-full text-ink-muted disabled:opacity-25"
-              aria-label="Move down"
-            >
-              <ChevronDown size={18} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => {
-              if (confirm('Remove this item?'))
-                deleteLine.mutate(l.id, {
-                  onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
-                })
-            }}
-            className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad print:hidden"
-            aria-label="Remove"
-          >
-            <Trash2 size={16} />
-          </button>
-        )}
+        <button
+          onClick={() => {
+            if (confirm('Remove this item?'))
+              deleteLine.mutate(l.id, {
+                onSuccess: () => qc.invalidateQueries({ queryKey: ['order_items', id] }),
+              })
+          }}
+          className="tap flex size-10 shrink-0 items-center justify-center rounded-full text-ink-faint hover:text-bad print:hidden"
+          aria-label="Remove"
+        >
+          <Trash2 size={16} />
+        </button>
       </li>
     )
   }
@@ -536,81 +486,60 @@ export default function OrderDetail() {
       </div>
 
       <section className="mb-6 rounded-card bg-surface p-4 shadow-card">
-        <div className="mb-2 flex items-center justify-between">
+        {/* Wraps as a whole on narrow screens or at large font sizes, so the
+            button labels never break across two lines. */}
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <h2 className="font-display text-sm text-ink-muted">Items</h2>
-          <div className="flex items-center gap-1 print:hidden">
-            {reordering ? (
+          <div className="flex flex-wrap items-center justify-end gap-1 print:hidden">
+            {canGroup && (
               <button
-                onClick={() => { haptic(); setReordering(false) }}
-                className="tap flex min-h-11 items-center gap-1 rounded-full bg-brand/10 px-4 text-sm font-bold text-brand"
+                onClick={() => {
+                  haptic()
+                  setGrouping(!grouping)
+                  setFandomGrouping(!grouping)
+                }}
+                aria-pressed={grouping}
+                aria-label="Group items by fandom"
+                title={grouping ? 'Ungroup items' : 'Group items by fandom'}
+                className={`tap flex size-11 shrink-0 items-center justify-center rounded-full ${grouping ? 'text-accent' : 'text-ink-muted'}`}
               >
-                Done
+                <Layers size={15} />
               </button>
-            ) : (
-              <>
-                {canGroup && (
-                  <button
-                    onClick={() => {
-                      haptic()
-                      setGrouping(!grouping)
-                      setFandomGrouping(!grouping)
-                    }}
-                    aria-pressed={grouping}
-                    aria-label="Group items by fandom"
-                    title={grouping ? 'Ungroup items' : 'Group items by fandom'}
-                    className={`tap flex size-11 items-center justify-center rounded-full ${grouping ? 'text-accent' : 'text-ink-muted'}`}
-                  >
-                    <Layers size={15} />
-                  </button>
-                )}
-                {(lines?.length ?? 0) > 1 && (
-                  <button
-                    onClick={() => { haptic(); setReordering(true) }}
-                    aria-label="Reorder items"
-                    title="Reorder items"
-                    className="tap flex size-11 items-center justify-center rounded-full text-ink-muted"
-                  >
-                    <ArrowUpDown size={15} />
-                  </button>
-                )}
-                <button
-                  onClick={() => setImporting(true)}
-                  className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-ink-muted"
-                >
-                  <ClipboardPaste size={15} />
-                  Import
-                </button>
-                <button
-                  onClick={() => setAddingLine(true)}
-                  className="tap flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-brand"
-                >
-                  <Plus size={15} strokeWidth={3} />
-                  Add item
-                </button>
-              </>
             )}
+            <button
+              onClick={() => setImporting(true)}
+              className="tap flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-bold text-ink-muted"
+            >
+              <ClipboardPaste size={15} />
+              Import
+            </button>
+            <button
+              onClick={() => {
+                haptic()
+                setAddingLine(true)
+              }}
+              className="tap flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-4 text-sm font-bold text-white shadow-card"
+            >
+              <Plus size={15} strokeWidth={3} />
+              Add item
+            </button>
           </div>
         </div>
         {(lines ?? []).length === 0 && <p className="py-3 text-sm text-ink-faint">No items.</p>}
-        {groupedList ? (
+        {grouped ? (
           <div>
             {fandomGroups.map((g) => (
               <div key={g.fandom ?? '__no_fandom__'}>
                 <div className="flex items-center gap-2 pb-0.5 pt-2.5">
                   <h3 className="font-display text-xs font-bold text-accent">{g.fandom ?? NO_FANDOM_LABEL}</h3>
                   <span className="h-px flex-1 bg-line" />
-                  <span className="text-xs text-ink-faint">
-                    {formatRub(g.lines.reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0))}
-                  </span>
                 </div>
-                <ul className="divide-y divide-line">
-                  {g.lines.map((l) => renderLine(l, flatIndex.get(l.id) ?? 0))}
-                </ul>
+                <ul className="divide-y divide-line">{g.lines.map(renderLine)}</ul>
               </div>
             ))}
           </div>
         ) : (
-          <ul className="divide-y divide-line">{(lines ?? []).map((l, index) => renderLine(l, index))}</ul>
+          <ul className="divide-y divide-line">{orderedLines.map(renderLine)}</ul>
         )}
         {(lines ?? []).length > 0 && (
           <div className="mt-2 text-right">

@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem } from './types'
 import { formatRub } from './format'
-import { groupLinesByFandom, NO_FANDOM_LABEL } from './fandom'
+import { groupLinesByFandom, NO_FANDOM_LABEL } from './orderLines'
 
 // Renders an order as shareable PNGs styled like the public store page
 // (sterhn/merch_page): dark ground, cream serif, teal accents, sharp-cornered

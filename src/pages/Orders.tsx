@@ -11,7 +11,7 @@ import Modal from '../components/Modal'
 import SwipeableRow from '../components/SwipeableRow'
 import { Field, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
-import { groupLinesByFandom, NO_FANDOM_LABEL } from '../lib/fandom'
+import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
 import {
   fandomGrouping,
   flushViewState,
@@ -190,7 +190,7 @@ export default function Orders() {
                       `<tr class="group"><td colspan="4">${g.fandom ?? NO_FANDOM_LABEL}</td></tr>${rowsFor(g.lines)}`,
                   )
                   .join('')
-              : rowsFor(items)
+              : rowsFor(sortLinesByPrice(items))
 
           const statusParts = [
             order.paid ? '✓ Paid' : '✗ Not paid',
