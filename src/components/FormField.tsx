@@ -44,6 +44,10 @@ function BaseButton({
 }: ButtonProps & { variant: keyof typeof STYLE; pattern?: number | number[] }) {
   return (
     <button
+      // Defaults to "button", before the spread so an explicit type still wins.
+      // Most of these render inside an editor <form> — the delete and "Received"
+      // actions among them — where a bare <button> would submit it instead.
+      // Save buttons opt in with type="submit".
       type="button"
       {...props}
       onClick={(e) => {

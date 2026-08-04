@@ -6,6 +6,7 @@ import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage, uploadProductPhoto } from '../lib/images'
 import { buildableCounts, groupBundles, summarizeParts, type BundleComponent } from '../lib/bundles'
 import { supabase } from '../lib/supabase'
+import { failureMessage } from '../lib/errorMessage'
 import { formatRub, parseCount, parseMoney } from '../lib/format'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
@@ -318,8 +319,8 @@ export default function Catalog() {
       if (old?.image_url && old.image_url !== imageUrl) void deleteItemImage(old.image_url)
       if (old?.product_photo_url && old.product_photo_url !== productUrl) void deleteItemImage(old.product_photo_url)
       setEditing(null)
-    } catch {
-      setSaveError('Save failed — check your connection and try again.')
+    } catch (err) {
+      setSaveError(failureMessage('Save', err))
     }
   }
 

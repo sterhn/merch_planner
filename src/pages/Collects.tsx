@@ -5,6 +5,7 @@ import type { Collect, CollectItem, Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { supabase } from '../lib/supabase'
 import { formatDate, formatRub, parseCount, parseMoney, todayISO } from '../lib/format'
+import { failureMessage } from '../lib/errorMessage'
 import { showToast } from '../lib/toast'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
@@ -164,8 +165,10 @@ export default function Collects() {
       }
       await syncPositions(saved.id)
       return saved
-    } catch {
-      setFormError('Save failed — check your connection and try again.')
+    } catch (err) {
+      // The collect row may already exist at this point — syncPositions runs
+      // after the insert — so say so rather than implying nothing happened.
+      setFormError(failureMessage('Save', err))
       return null
     }
   }
@@ -260,8 +263,8 @@ export default function Collects() {
       ])
       showToast('Positions added to catalog ✓')
       setEditing(null)
-    } catch {
-      setFormError('Receiving failed — check your connection and try again.')
+    } catch (err) {
+      setFormError(failureMessage('Receiving', err))
     } finally {
       setReceiveBusy(false)
     }
