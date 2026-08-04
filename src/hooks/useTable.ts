@@ -42,7 +42,7 @@ export function useList<T>(table: string, opts: ListOptions = {}) {
  * Strings use ru collation so Cyrillic names order sensibly rather than by code
  * point.
  */
-function sortRows<T>(rows: T[], column: string, ascending: boolean): T[] {
+export function sortRows<T>(rows: T[], column: string, ascending: boolean): T[] {
   const key = column as keyof T
   return [...rows].sort((a, b) => {
     const x = a[key]
