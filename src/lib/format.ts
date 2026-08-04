@@ -9,8 +9,9 @@ export function formatRub(value: number | null | undefined): string {
 
 /**
  * Parses a money field. Accepts the comma decimal separator a Russian keyboard
- * produces — `Number('1,5')` is NaN, and every form but the shelf's rent field
- * used to hit that. Blank means "not set" (null), not zero.
+ * produces — `Number('1,5')` is NaN. Pair with `type="text" inputMode="decimal"`
+ * inputs: a `type="number"` input rejects the comma before this ever runs.
+ * Blank means "not set" (null), not zero.
  */
 export function parseMoney(input: string): number | null {
   const trimmed = input.trim().replace(',', '.')

@@ -4,7 +4,6 @@ import {
   Package,
   Tags,
   Printer,
-  Store,
   Wallet,
   LogOut,
   type LucideIcon,
@@ -17,7 +16,6 @@ const NAV: { to: string; label: string; icon: LucideIcon }[] = [
   { to: '/orders', label: 'Orders', icon: Package },
   { to: '/catalog', label: 'Catalog', icon: Tags },
   { to: '/collects', label: 'Collects', icon: Printer },
-  { to: '/shelf', label: 'Shelf', icon: Store },
   { to: '/expenses', label: 'Expenses', icon: Wallet },
 ]
 

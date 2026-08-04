@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OrderItem } from './types'
-import { esc, itemRowsHtml, statusParts } from './printOrder'
+import { esc, itemRowsHtml, ORDER_LIST_CSS, printPageHtml, SINGLE_ORDER_CSS, statusParts } from './printOrder'
 
 function line(id: string, item_id: string | null, unit_price: number | null, qty = 1): OrderItem {
   return { id, item_id, name_text: null, unit_price, qty } as OrderItem
@@ -67,5 +67,30 @@ describe('itemRowsHtml', () => {
     const html = itemRowsHtml([line('1', 'a', 100), line('2', 'a', 50)], catalog)
     expect(html).not.toContain('class="group"')
     expect(html.match(/<tr>/g)).toHaveLength(2)
+  })
+})
+
+describe('printPageHtml', () => {
+  it('wraps the body in a complete document with the given stylesheet', () => {
+    const html = printPageHtml('Order – @user', SINGLE_ORDER_CSS, '<h1>@user</h1>')
+    expect(html).toContain('<!DOCTYPE html>')
+    expect(html).toContain('<meta charset="utf-8">')
+    expect(html).toContain('<title>Order – @user</title>')
+    expect(html).toContain(SINGLE_ORDER_CSS)
+    expect(html).toContain('<h1>@user</h1>')
+  })
+
+  it('escapes the title — customer names are user-entered', () => {
+    const html = printPageHtml('Order – <Fish & Chips>', ORDER_LIST_CSS, '')
+    expect(html).toContain('<title>Order – &lt;Fish &amp; Chips&gt;</title>')
+    expect(html).not.toContain('<title>Order – <Fish')
+  })
+
+  it('both stylesheets keep the class names the shared row builders emit', () => {
+    for (const css of [SINGLE_ORDER_CSS, ORDER_LIST_CSS]) {
+      expect(css).toContain('tr.group td')
+      expect(css).toContain('.items-total')
+      expect(css).toContain('.order-total')
+    }
   })
 })

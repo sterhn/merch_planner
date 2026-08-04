@@ -8,6 +8,14 @@ interface ModalProps {
   children: ReactNode
 }
 
+// Open modals, bottom to top. Sheets can stack (a confirm sheet over an editor),
+// and only the topmost one may react to Escape or trap Tab — otherwise one key
+// press would close every layer at once.
+const modalStack: symbol[] = []
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export default function Modal({ title, open, onClose, children }: ModalProps) {
   const [closing, setClosing] = useState(false)
   const closingRef = useRef(false)
@@ -40,13 +48,46 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
   useEffect(() => {
     if (!open) return
     panelRef.current?.focus()
+    const token = Symbol('modal')
+    modalStack.push(token)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose()
+      if (modalStack[modalStack.length - 1] !== token) return
+      if (e.key === 'Escape') {
+        requestClose()
+        return
+      }
+      // Keep Tab inside the sheet: aria-modal promises the page behind is
+      // unreachable, so wrap at the edges instead of tabbing out into it.
+      if (e.key === 'Tab') {
+        const panel = panelRef.current
+        if (!panel) return
+        const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+        if (focusables.length === 0) {
+          e.preventDefault()
+          panel.focus()
+          return
+        }
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        const active = document.activeElement
+        const inside = active instanceof HTMLElement && panel.contains(active)
+        if (e.shiftKey) {
+          if (!inside || active === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else if (!inside || active === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => {
+      const i = modalStack.indexOf(token)
+      if (i !== -1) modalStack.splice(i, 1)
       document.body.style.overflow = prevOverflow
       window.removeEventListener('keydown', onKey)
     }

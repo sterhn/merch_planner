@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
+import { useConfirm } from '../hooks/useConfirm'
 import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
 import OrderStatus from '../components/OrderStatus'
@@ -15,7 +17,7 @@ import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import { groupLinesByFandom, linesTotal, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, statusParts } from '../lib/printOrder'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, ORDER_LIST_CSS, printPageHtml, statusParts } from '../lib/printOrder'
 import {
   fandomGrouping,
   flushViewState,
@@ -42,10 +44,25 @@ export default function Orders() {
     select: '*, order_items(name_text, item:item_id(name, image_url))',
   })
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const insert = useInsert<Order>('orders')
   // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
   const update = useUpdate<Order>('orders', ['items'])
   const remove = useDelete('orders')
+  const { confirm, element: confirmSheet } = useConfirm()
+
+  // Optimistic: flip the badge in every cached orders list immediately, and
+  // fall back to a refetch if the save fails. Without this the swipe felt
+  // laggy next to the same toggle on the order screen.
+  function advanceStatus(id: string, values: Partial<Order>) {
+    qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
+      Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...values } : o)) : data,
+    )
+    update.mutate(
+      { id, values },
+      { onError: () => void qc.invalidateQueries({ queryKey: ['orders'] }) },
+    )
+  }
 
   // Search, filters and scroll come back from the last visit, so leaving an
   // order half-entered and returning drops you where you stopped.
@@ -202,35 +219,12 @@ export default function Orders() {
         filter === 'to_send' ? 'To send' : filter === 'sent' ? 'Sent' : filter === 'unpaid' ? 'Unpaid' : filter === 'done' ? 'Done' : 'All'
       const deliveryLabel = deliveryFilter ? ` · ${deliveryFilter}` : ''
 
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Orders – ${filterLabel}${deliveryLabel} – ${printedOn}</title>
-  <style>
-    body { font-family: sans-serif; font-size: 12px; padding: 20px 28px; color: #111; max-width: 720px; margin: 0 auto; }
-    h1 { font-size: 14px; color: #555; margin: 0 0 20px; font-weight: normal; }
-    .order { border-top: 2px solid #333; padding-top: 10px; margin-bottom: 18px; page-break-inside: avoid; }
-    .order-header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 3px; }
-    h2 { font-size: 14px; margin: 0; }
-    .badge { background: #eee; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
-    .status { font-size: 10px; color: #666; margin-bottom: 6px; }
-    .meta { font-size: 11px; color: #444; margin-top: 1px; }
-    .comment { color: #888; font-style: italic; }
-    table { width: 100%; border-collapse: collapse; margin: 6px 0 3px; }
-    th { text-align: left; border-bottom: 1px solid #333; padding: 3px 6px 3px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
-    td { padding: 3px 6px 3px 0; border-bottom: 1px solid #eee; font-size: 11px; }
-    tr.group td { padding-top: 7px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; color: #555; border-bottom: 1px solid #ccc; }
-    .items-total { text-align: right; font-size: 10px; color: #666; }
-    .order-total { text-align: right; font-weight: bold; font-size: 13px; margin-top: 2px; }
-    .no-items { color: #aaa; font-size: 11px; margin: 4px 0; }
-  </style>
-</head>
-<body>
-  <h1>Orders · ${filterLabel}${deliveryLabel} · ${printedOn} · ${filtered.length} order${filtered.length !== 1 ? 's' : ''}</h1>
-  ${ordersHtml}
-</body>
-</html>`
+      const html = printPageHtml(
+        `Orders – ${filterLabel}${deliveryLabel} – ${printedOn}`,
+        ORDER_LIST_CSS,
+        `<h1>Orders · ${filterLabel}${esc(deliveryLabel)} · ${printedOn} · ${filtered.length} order${filtered.length !== 1 ? 's' : ''}</h1>
+  ${ordersHtml}`,
+      )
 
       openPrintWindow(html)
     } finally {
@@ -360,26 +354,26 @@ export default function Orders() {
                 icon: BadgeCheck,
                 label: 'paid',
                 tone: 'good',
-                onAction: () => update.mutate({ id: o.id, values: { paid: true } }),
+                onAction: () => advanceStatus(o.id, { paid: true }),
               }
             : !o.sent
               ? {
                   icon: Send,
                   label: 'sent',
                   tone: 'accent',
-                  onAction: () => update.mutate({ id: o.id, values: { sent: true } }),
+                  onAction: () => advanceStatus(o.id, { sent: true }),
                 }
               : !o.delivered
                 ? {
                     icon: PackageCheck,
                     label: 'delivered',
                     tone: 'brand',
-                    onAction: () => update.mutate({ id: o.id, values: { delivered: true } }),
+                    onAction: () => advanceStatus(o.id, { delivered: true }),
                   }
                 : undefined
           const who = o.telegram || o.customer_email || 'no contact'
           const onDelete = () => {
-            if (confirm('Delete this order?')) remove.mutate(o.id)
+            confirm('Delete this order?', () => remove.mutate(o.id))
           }
           const AdvanceIcon = advance?.icon
           return (
@@ -452,6 +446,8 @@ export default function Orders() {
           </PrimaryButton>
         </form>
       </Modal>
+
+      {confirmSheet}
     </div>
   )
 }

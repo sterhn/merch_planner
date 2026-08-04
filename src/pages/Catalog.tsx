@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Tags, X } from 'lucide-react'
+import { Tags, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -10,7 +10,9 @@ import { failureMessage } from '../lib/errorMessage'
 import { formatRub, parseCount, parseMoney } from '../lib/format'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
+import { useConfirm } from '../hooks/useConfirm'
 import FilterChip from '../components/FilterChip'
+import { AddRowButton, PickRowButton } from '../components/RowEditor'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import SearchInput from '../components/SearchInput'
@@ -119,10 +121,13 @@ export default function Catalog() {
   const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
   })
-  const insert = useInsert<Item>('items')
-  const update = useUpdate<Item>('items')
+  // The editor shows save failures inline (and stays open), so the global
+  // error toast would be a duplicate.
+  const insert = useInsert<Item>('items', [], { suppressErrorToast: true })
+  const update = useUpdate<Item>('items', [], { suppressErrorToast: true })
   const remove = useDelete('items')
   const queryClient = useQueryClient()
+  const { confirm, element: confirmSheet } = useConfirm()
 
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
@@ -379,7 +384,10 @@ export default function Catalog() {
               </button>
               <button
                 type="button"
-                onClick={() => openEditor(item)}
+                onClick={() => {
+                  haptic()
+                  openEditor(item)
+                }}
                 className="tap flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
               >
                 <div className="min-w-0 flex-1">
@@ -468,18 +476,11 @@ export default function Catalog() {
             <div className="space-y-2">
               {bundleRows.map((row, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      haptic()
-                      setPickerFor(i)
-                    }}
-                    className={`${inputClass} tap flex min-w-0 flex-1 items-center text-left`}
-                  >
-                    <span className={`truncate ${row.component_id ? '' : 'text-ink-faint'}`}>
-                      {row.component_id ? (itemById.get(row.component_id)?.name ?? '?') : 'tap to pick item…'}
-                    </span>
-                  </button>
+                  <PickRowButton
+                    label={row.component_id ? (itemById.get(row.component_id)?.name ?? '?') : null}
+                    empty="tap to pick item…"
+                    onClick={() => setPickerFor(i)}
+                  />
                   {/* wrapper fixes the width: inputClass's w-full would win over w-20 */}
                   <div className="w-16 shrink-0">
                     <input
@@ -506,28 +507,22 @@ export default function Catalog() {
                   />
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={() => {
-                  haptic()
-                  setBundleRows([...bundleRows, { component_id: '', qty: '1' }])
-                }}
-                className="tap flex min-h-11 items-center gap-1.5 text-sm font-bold text-brand"
-              >
-                <Plus size={14} strokeWidth={3} />
+              <AddRowButton onClick={() => setBundleRows([...bundleRows, { component_id: '', qty: '1' }])}>
                 Add component
-              </button>
+              </AddRowButton>
               {bundleRows.length === 0 && (
                 <p className="text-xs text-ink-faint">Optional — list what's inside if this item is a set.</p>
               )}
             </div>
           </Field>
           <div className="grid grid-cols-3 gap-3">
+            {/* Money fields are text, not number: a number input rejects the comma
+                decimal separator a Russian keyboard produces (parseMoney handles it). */}
             <Field label="Cost ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
             </Field>
             <Field label="Price ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
             </Field>
             <Field label="Stock">
               <input className={inputClass} type="number" inputMode="numeric" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} />
@@ -545,16 +540,17 @@ export default function Catalog() {
             <div className="mt-2">
               <DangerButton
                 type="button"
-                onClick={() => {
-                  if (confirm('Delete this item?'))
+                onClick={() =>
+                  confirm('Delete this item?', () =>
                     remove.mutate(editing.id, {
                       onSuccess: () => {
                         void deleteItemImage(editing.image_url)
                         void deleteItemImage(editing.product_photo_url)
                         setEditing(null)
                       },
-                    })
-                }}
+                    }),
+                  )
+                }
               >
                 Delete
               </DangerButton>
@@ -622,6 +618,8 @@ export default function Catalog() {
           }}
         />
       </Modal>
+
+      {confirmSheet}
     </div>
   )
 }

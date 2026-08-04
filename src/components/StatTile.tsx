@@ -14,7 +14,7 @@ const TEXT: Record<StatTone, string> = {
   brand: 'text-brand',
 }
 
-/** Small headline-number tile used on the dashboard and the shelf. */
+/** Small headline-number tile for a row of dashboard stats. */
 export default function StatTile({
   label,
   value,

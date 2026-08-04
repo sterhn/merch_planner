@@ -14,12 +14,12 @@ import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList } from '../hooks/useTable'
 import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, parseMoney, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
+import { useConfirm } from '../hooks/useConfirm'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import SwipeableRow from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
-import { haptic } from '../lib/haptics'
 
 const CATEGORY_LABELS: Record<string, string> = {
   shelf_rent: 'Shelf rent',
@@ -41,6 +41,7 @@ export default function Expenses() {
   const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
   const remove = useDelete('expenses', ['expense_feed'])
+  const { confirm, element: confirmSheet } = useConfirm()
 
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({
@@ -89,10 +90,7 @@ export default function Expenses() {
   }
 
   function confirmDelete(id: string) {
-    if (confirm('Delete this expense?')) {
-      haptic([10, 30, 10])
-      remove.mutate(id)
-    }
+    confirm('Delete this expense?', () => remove.mutate(id))
   }
 
   return (
@@ -195,14 +193,18 @@ export default function Expenses() {
           <Field label="Description">
             <input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
+          {/* text + inputMode, not type="number": a number input rejects the comma
+              decimal separator a Russian keyboard produces (parseMoney handles it). */}
           <Field label="Amount ₽">
-            <input className={inputClass} type="number" step="0.01" inputMode="decimal" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <input className={inputClass} type="text" inputMode="decimal" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </Field>
           <PrimaryButton type="submit" disabled={insert.isPending}>
             Save
           </PrimaryButton>
         </form>
       </Modal>
+
+      {confirmSheet}
     </div>
   )
 }

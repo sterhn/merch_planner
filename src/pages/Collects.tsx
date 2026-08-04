@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Printer, AlertTriangle, CalendarClock, PackageCheck, X } from 'lucide-react'
+import { Printer, AlertTriangle, CalendarClock, PackageCheck, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Collect, CollectItem, Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
@@ -9,8 +9,12 @@ import { failureMessage } from '../lib/errorMessage'
 import { showToast } from '../lib/toast'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
+import { useConfirm } from '../hooks/useConfirm'
+import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { AddRowButton, PickRowButton } from '../components/RowEditor'
+import SearchInput from '../components/SearchInput'
 import StatusBadge from '../components/StatusBadge'
 import {
   AddButton,
@@ -42,11 +46,16 @@ export default function Collects() {
   })
   const { data: collectItems } = useList<CollectItem>('collect_items')
   const { data: items } = useList<Item>('items', { orderBy: 'name' })
-  const insert = useInsert<Collect>('collects', ['expense_feed'])
-  const update = useUpdate<Collect>('collects', ['expense_feed'])
+  // The editor shows save failures inline (and stays open), so the global
+  // error toast would be a duplicate.
+  const insert = useInsert<Collect>('collects', ['expense_feed'], { suppressErrorToast: true })
+  const update = useUpdate<Collect>('collects', ['expense_feed'], { suppressErrorToast: true })
   const remove = useDelete('collects', ['expense_feed'])
   const queryClient = useQueryClient()
+  const { confirm, element: confirmSheet } = useConfirm()
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'received'>('all')
   const [editing, setEditing] = useState<Collect | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [positions, setPositions] = useState<PositionRow[]>([])
@@ -188,80 +197,16 @@ export default function Collects() {
 
   // The collect arrived: bump stock for linked items, turn free-text positions
   // into new catalog items (cost = this collect's per-unit cost), and stamp
-  // received_at so it can't be applied twice.
-  //
-  // Not atomic: a failure partway leaves some stock applied while received_at
-  // stays null, so a retry would double-count those items. Making it safe needs
-  // a Postgres function doing the whole thing in one transaction.
+  // received_at so it can't be applied twice. All of it happens inside one
+  // Postgres function (receive_collect, migration 009) so a failure partway
+  // can't leave stock half-applied — it fully applies or not at all.
   async function receive() {
     const saved = await doSave()
     if (!saved) return
     setReceiveBusy(true)
     try {
-      const printTotal = saved.print_cost ?? 0
-      const overhead = (saved.commission ?? 0) + (saved.delivery_cost ?? 0)
-      const qtyTotal = saved.qty ?? 0
-      // Overhead (commission + delivery) is spread evenly per piece; a position
-      // with its own print cost gets that + overhead, otherwise the even split.
-      const overheadPerUnit = qtyTotal > 0 ? overhead / qtyTotal : 0
-      const evenPerUnit = qtyTotal > 0 ? (printTotal + overhead) / qtyTotal : null
-      const unitCost = (r: CollectItem) =>
-        r.print_cost != null
-          ? Math.round((r.print_cost + overheadPerUnit) * 100) / 100
-          : evenPerUnit != null
-            ? Math.round(evenPerUnit * 100) / 100
-            : null
-
-      const { data: rows, error } = await supabase.from('collect_items').select('*').eq('collect_id', saved.id)
+      const { error } = await supabase.rpc('receive_collect', { p_collect_id: saved.id })
       if (error) throw error
-
-      const all = (rows ?? []) as CollectItem[]
-      const linked = all.filter((r): r is CollectItem & { item_id: string } => Boolean(r.item_id))
-      const freeText = all.filter((r) => !r.item_id && r.name_text)
-
-      // One read for every linked item instead of one per position. Quantities
-      // are accumulated per item first: two positions can point at the same
-      // item, and the writes below run concurrently, so they must not each
-      // apply a delta to the same starting stock.
-      const addByItem = new Map<string, number>()
-      for (const r of linked) addByItem.set(r.item_id, (addByItem.get(r.item_id) ?? 0) + r.qty)
-
-      if (addByItem.size > 0) {
-        const { data: current, error: curErr } = await supabase
-          .from('items')
-          .select('id, stock_qty')
-          .in('id', [...addByItem.keys()])
-        if (curErr) throw curErr
-        const stockById = new Map((current ?? []).map((i) => [i.id as string, (i.stock_qty as number) ?? 0]))
-
-        await Promise.all(
-          [...addByItem].map(async ([itemId, added]) => {
-            const { error: updErr } = await supabase
-              .from('items')
-              .update({ stock_qty: (stockById.get(itemId) ?? 0) + added })
-              .eq('id', itemId)
-            if (updErr) throw updErr
-          }),
-        )
-      }
-
-      await Promise.all(
-        freeText.map(async (r) => {
-          const { data: created, error: insErr } = await supabase
-            .from('items')
-            .insert({ name: r.name_text, cost_price: unitCost(r), stock_qty: r.qty })
-            .select('id')
-            .single()
-          if (insErr) throw insErr
-          const { error: linkErr } = await supabase.from('collect_items').update({ item_id: created.id }).eq('id', r.id)
-          if (linkErr) throw linkErr
-        }),
-      )
-      const { error: recvErr } = await supabase
-        .from('collects')
-        .update({ received_at: new Date().toISOString() })
-        .eq('id', saved.id)
-      if (recvErr) throw recvErr
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['items'] }),
         queryClient.invalidateQueries({ queryKey: ['collect_items'] }),
@@ -280,30 +225,69 @@ export default function Collects() {
   const received = editing !== 'new' && editing ? editing.received_at : null
   const hasPositions = positions.some((p) => p.item_id || p.name_text.trim())
 
+  // Months of runs accumulate; search covers name, vendor and position names.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (collects ?? []).filter((c) => {
+      if (statusFilter === 'pending' && c.received_at) return false
+      if (statusFilter === 'received' && !c.received_at) return false
+      if (!q) return true
+      const positionNames = (positionsByCollect.get(c.id) ?? [])
+        .map((p) => ((p.item_id ? itemById.get(p.item_id)?.name : null) ?? p.name_text ?? ''))
+        .join(' ')
+      return `${c.name ?? ''} ${c.vendor ?? ''} ${positionNames}`.toLowerCase().includes(q)
+    })
+  }, [collects, search, statusFilter, positionsByCollect, itemById])
+
   return (
     <div>
       <PageHeader title="Collects">
         <AddButton onClick={() => openEditor('new')}>Add collect</AddButton>
       </PageHeader>
 
+      <SearchInput
+        className="mb-3"
+        label="Search collects"
+        placeholder="Search name, vendor or positions…"
+        value={search}
+        onChange={setSearch}
+      />
+
+      <div className="mb-4 flex gap-2 overflow-x-auto">
+        {(
+          [
+            { key: 'all', label: 'All' },
+            { key: 'pending', label: 'Not received' },
+            { key: 'received', label: 'Received' },
+          ] as const
+        ).map((f) => (
+          <FilterChip key={f.key} active={statusFilter === f.key} onClick={() => setStatusFilter(f.key)}>
+            {f.label}
+          </FilterChip>
+        ))}
+      </div>
+
       <QueryState
         isLoading={isLoading}
         isError={isError}
-        isEmpty={(collects ?? []).length === 0}
+        isEmpty={filtered.length === 0}
         icon={Printer}
         errorMessage="Failed to load collects."
-        emptyMessage="No production runs yet."
+        emptyMessage={(collects ?? []).length === 0 ? 'No production runs yet.' : 'No collects match.'}
         onRetry={() => void refetch()}
       />
 
       <div className="space-y-2">
-        {(collects ?? []).map((c) => {
+        {filtered.map((c) => {
           const overdue = !c.paid && c.deadline != null && c.deadline < today
           const rowPositions = positionsByCollect.get(c.id) ?? []
           return (
             <button
               key={c.id}
-              onClick={() => openEditor(c)}
+              onClick={() => {
+                haptic()
+                openEditor(c)
+              }}
               className={`tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10 ${
                 overdue ? 'ring-2 ring-bad/50' : ''
               }`}
@@ -350,12 +334,14 @@ export default function Collects() {
           <Field label="Collect / vendor">
             <input className={inputClass} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
           </Field>
+          {/* Money fields are text, not number: a number input rejects the comma
+              decimal separator a Russian keyboard produces (parseMoney handles it). */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Commission ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={form.commission} onChange={(e) => setForm({ ...form, commission: e.target.value })} />
             </Field>
             <Field label="Delivery ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.delivery_cost} onChange={(e) => setForm({ ...form, delivery_cost: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={form.delivery_cost} onChange={(e) => setForm({ ...form, delivery_cost: e.target.value })} />
             </Field>
           </div>
           <Field label="Deadline">
@@ -366,18 +352,11 @@ export default function Collects() {
               {positions.map((row, i) => (
                 <div key={i} className="space-y-1.5 rounded-control border border-line p-2">
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        haptic()
-                        setPickerFor(i)
-                      }}
-                      className={`${inputClass} tap flex min-w-0 flex-1 items-center text-left`}
-                    >
-                      <span className={`truncate ${row.item_id ? '' : 'text-ink-faint'}`}>
-                        {row.item_id ? (itemById.get(row.item_id)?.name ?? '?') : '＋ new item — tap to pick existing'}
-                      </span>
-                    </button>
+                    <PickRowButton
+                      label={row.item_id ? (itemById.get(row.item_id)?.name ?? '?') : null}
+                      empty="＋ new item — tap to pick existing"
+                      onClick={() => setPickerFor(i)}
+                    />
                     <IconButton
                       icon={X}
                       size={10}
@@ -416,9 +395,7 @@ export default function Collects() {
                     <label className="block">
                       <span className="mb-0.5 block text-3xs font-bold uppercase tracking-wider text-ink-faint">Print ₽/pc</span>
                       <input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
                         inputMode="decimal"
                         className={inputClass}
                         value={row.print_cost}
@@ -430,17 +407,11 @@ export default function Collects() {
                   </div>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={() => {
-                  haptic()
-                  setPositions([...positions, { item_id: '', name_text: '', qty: '1', print_cost: '' }])
-                }}
-                className="tap flex min-h-11 items-center gap-1.5 text-sm font-bold text-brand"
+              <AddRowButton
+                onClick={() => setPositions([...positions, { item_id: '', name_text: '', qty: '1', print_cost: '' }])}
               >
-                <Plus size={14} strokeWidth={3} />
                 Add position
-              </button>
+              </AddRowButton>
               {positions.length === 0 ? (
                 <p className="text-xs text-ink-faint">
                   Optional — list what you ordered. When the collect arrives, one tap adds everything to the catalog.
@@ -491,9 +462,11 @@ export default function Collects() {
             <div className="mt-2">
               <DangerButton
                 type="button"
-                onClick={() => {
-                  if (confirm('Delete this collect?')) remove.mutate(editing.id, { onSuccess: () => setEditing(null) })
-                }}
+                onClick={() =>
+                  confirm('Delete this collect?', () =>
+                    remove.mutate(editing.id, { onSuccess: () => setEditing(null) }),
+                  )
+                }
               >
                 Delete
               </DangerButton>
@@ -516,6 +489,8 @@ export default function Collects() {
           }}
         />
       </Modal>
+
+      {confirmSheet}
     </div>
   )
 }

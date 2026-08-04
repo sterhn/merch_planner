@@ -119,13 +119,15 @@ export default function Dashboard() {
     const orderRevenue = (orders ?? [])
       .filter((o) => o.paid && inPeriod(localMonth(o.created_at)))
       .reduce((s, o) => s + (o.total_price ?? 0), 0)
+    // The shelf page is archived, but its historical income still counts —
+    // folded into Revenue so past months (and the all-time net) stay truthful.
     const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
     const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
+    const revenue = orderRevenue + shelfIncome
     return {
-      orderRevenue,
-      shelfIncome,
+      revenue,
       totalExpenses,
-      net: orderRevenue + shelfIncome - totalExpenses,
+      net: revenue - totalExpenses,
       unpaid: (orders ?? []).filter((o) => !o.paid).length,
       toSend: (orders ?? []).filter((o) => o.paid && !o.sent).length,
     }
@@ -140,17 +142,6 @@ export default function Dashboard() {
       .slice(0, 3)
       .map((c) => ({ ...c, urgent: c.deadline! <= soon }))
   }, [collects])
-
-  // Scoped to the selected period so it never contradicts the Shelf metric
-  // (e.g. a top seller from another month next to a 0 ₽ shelf income).
-  const topSeller = useMemo(
-    () =>
-      (shelf ?? [])
-        .filter((r) => period === 'all' || r.month === period)
-        .sort((a, b) => (b.qty_sold ?? 0) - (a.qty_sold ?? 0))
-        .find((r) => (r.qty_sold ?? 0) > 0) ?? null,
-    [shelf, period],
-  )
 
   // Bundles are excluded: their availability comes from component stock,
   // and the components themselves already surface here.
@@ -225,10 +216,9 @@ export default function Dashboard() {
 
       <div className="mb-3 flex flex-col gap-2">
         <HeroCard value={stats.net} isPositive={stats.net >= 0} />
-        <div className="grid grid-cols-3 gap-2">
-          <StatTile label="Revenue" value={stats.orderRevenue} tone="good" format={formatRub} index={0} />
+        <div className="grid grid-cols-2 gap-2">
+          <StatTile label="Revenue" value={stats.revenue} tone="good" format={formatRub} index={0} />
           <StatTile label="Expenses" value={stats.totalExpenses} tone="bad" format={formatRub} index={1} />
-          <StatTile label="Shelf" value={stats.shelfIncome} tone="brand" format={formatRub} index={2} />
         </div>
       </div>
 
@@ -240,15 +230,6 @@ export default function Dashboard() {
       )}
 
       <div className="mb-4 space-y-2">
-        {topSeller && (
-          <Card title="Top seller" className="animate-pop" style={{ animationDelay: '420ms' }}>
-            <p className="truncate text-sm font-bold">{topSeller.name}</p>
-            <p className="text-xs text-ink-muted">
-              <span className="font-bold text-good">{topSeller.qty_sold} sold</span> · {formatRub(topSeller.income)}
-            </p>
-          </Card>
-        )}
-
         {lowStock.length > 0 && (
           <Card title="Low stock alert" className="animate-pop" style={{ animationDelay: '480ms' }}>
             <div className="space-y-1.5">

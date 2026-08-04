@@ -38,9 +38,19 @@ export function useList<T>(table: string, opts: ListOptions = {}) {
   })
 }
 
-export function useInsert<T extends object>(table: string, invalidate: string[] = []) {
+interface MutationOpts {
+  /**
+   * Skip the global "Save failed" toast for this mutation. For forms that catch
+   * the error themselves and show it inline — without this, one failure surfaces
+   * as two differently-worded messages at once.
+   */
+  suppressErrorToast?: boolean
+}
+
+export function useInsert<T extends object>(table: string, invalidate: string[] = [], opts: MutationOpts = {}) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { suppressErrorToast: opts.suppressErrorToast },
     mutationFn: async (values: Partial<T>) => {
       const { data, error } = await supabase.from(table).insert(values as never).select().single()
       if (error) throw error
@@ -52,9 +62,10 @@ export function useInsert<T extends object>(table: string, invalidate: string[] 
   })
 }
 
-export function useUpdate<T extends object>(table: string, invalidate: string[] = []) {
+export function useUpdate<T extends object>(table: string, invalidate: string[] = [], opts: MutationOpts = {}) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { suppressErrorToast: opts.suppressErrorToast },
     mutationFn: async ({ id, values }: { id: string; values: Partial<T> }) => {
       const { error } = await supabase.from(table).update(values as never).eq('id', id)
       if (error) throw error
