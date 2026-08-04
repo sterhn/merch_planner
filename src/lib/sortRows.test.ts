@@ -30,6 +30,27 @@ describe('sortRows null placement matches Postgres', () => {
   })
 })
 
+describe('sortRows explicit nullsFirst', () => {
+  const rows = [{ v: 'b' }, { v: null }, { v: 'a' }, { v: null }, { v: 'c' }]
+
+  it('can put nulls last while sorting descending', () => {
+    // What the collects list wants: newest deadline first, undated runs at the
+    // bottom rather than the top Postgres would give them.
+    expect(show(sortRows(rows, 'v', false, false))).toBe('c,b,a,NULL,NULL')
+  })
+
+  it('can put nulls first while sorting ascending', () => {
+    expect(show(sortRows(rows, 'v', true, true))).toBe('NULL,NULL,a,b,c')
+  })
+
+  it('leaves the non-null ordering alone either way', () => {
+    const asc = sortRows(rows, 'v', true, true).filter((r) => r.v !== null)
+    const desc = sortRows(rows, 'v', false, false).filter((r) => r.v !== null)
+    expect(show(asc)).toBe('a,b,c')
+    expect(show(desc)).toBe('c,b,a')
+  })
+})
+
 describe('sortRows value ordering', () => {
   it('compares numbers numerically, not lexically', () => {
     const rows = [{ v: 10 }, { v: 9 }, { v: 100 }]

@@ -33,7 +33,13 @@ interface PositionRow {
 }
 
 export default function Collects() {
-  const { data: collects, isLoading, isError, refetch } = useList<Collect>('collects', { orderBy: 'deadline', ascending: false })
+  const { data: collects, isLoading, isError, refetch } = useList<Collect>('collects', {
+    orderBy: 'deadline',
+    ascending: false,
+    // Undated runs have no deadline to be urgent about, so they belong at the
+    // bottom rather than at the top where Postgres would put them.
+    nullsFirst: false,
+  })
   const { data: collectItems } = useList<CollectItem>('collect_items')
   const { data: items } = useList<Item>('items', { orderBy: 'name' })
   const insert = useInsert<Collect>('collects', ['expense_feed'])

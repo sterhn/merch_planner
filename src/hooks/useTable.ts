@@ -6,6 +6,8 @@ import { sortRows } from '../lib/sortRows'
 interface ListOptions {
   orderBy?: string
   ascending?: boolean
+  /** Where nulls land. Defaults to Postgres's rule (last asc, first desc). */
+  nullsFirst?: boolean
   select?: string
 }
 
@@ -16,13 +18,13 @@ interface ListOptions {
  * does stay in the key — it changes which columns and embeds come back.
  */
 export function useList<T>(table: string, opts: ListOptions = {}) {
-  const { orderBy, ascending = true, select = '*' } = opts
+  const { orderBy, ascending = true, nullsFirst, select = '*' } = opts
 
   // Memoised so TanStack doesn't re-sort on every render — it only re-runs
   // `select` when the data or this function reference changes.
   const sort = useCallback(
-    (rows: T[]) => (orderBy ? sortRows(rows, orderBy, ascending) : rows),
-    [orderBy, ascending],
+    (rows: T[]) => (orderBy ? sortRows(rows, orderBy, ascending, nullsFirst) : rows),
+    [orderBy, ascending, nullsFirst],
   )
 
   return useQuery({

@@ -11,20 +11,32 @@
  * Supabase client, whose constructor needs a WebSocket global and throws under
  * the Node version CI runs the tests on.
  */
-export function sortRows<T>(rows: T[], column: string, ascending: boolean): T[] {
+export function sortRows<T>(
+  rows: T[],
+  column: string,
+  ascending: boolean,
+  /** Defaults to Postgres's own rule: nulls last ascending, first descending. */
+  nullsFirst: boolean = !ascending,
+): T[] {
   const key = column as keyof T
   return [...rows].sort((a, b) => {
     const x = a[key]
     const y = b[key]
-    let cmp: number
     if (x == null || y == null) {
-      cmp = x == null ? (y == null ? 0 : 1) : -1
-    } else if (typeof x === 'string' && typeof y === 'string') {
-      // ru collation so Cyrillic names order sensibly rather than by code point.
-      cmp = x.localeCompare(y, 'ru')
-    } else {
-      cmp = x < y ? -1 : x > y ? 1 : 0
+      if (x == null && y == null) return 0
+      // Nulls go to whichever end was asked for, independent of the direction
+      // the non-null values are sorted in.
+      return (x == null ? 1 : -1) * (nullsFirst ? -1 : 1)
     }
+    const cmp =
+      typeof x === 'string' && typeof y === 'string'
+        ? // ru collation so Cyrillic names order sensibly rather than by code point.
+          x.localeCompare(y, 'ru')
+        : x < y
+          ? -1
+          : x > y
+            ? 1
+            : 0
     return ascending ? cmp : -cmp
   })
 }
