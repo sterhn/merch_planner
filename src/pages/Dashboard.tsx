@@ -257,7 +257,7 @@ export default function Dashboard() {
                   <p className="min-w-0 truncate text-sm">{i.name}</p>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                      (i.stock_qty ?? 0) <= 0 ? 'bg-bad/15 text-bad' : 'bg-sun/30 text-ink'
+                      (i.stock_qty ?? 0) <= 0 ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
                     }`}
                   >
                     {i.stock_qty} left
@@ -311,7 +311,7 @@ export default function Dashboard() {
                 </div>
                 <span
                   className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
-                    c.urgent ? 'bg-bad/15 text-bad' : 'bg-sun/30 text-ink'
+                    c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/30 text-ink'
                   }`}
                 >
                   <CalendarClock size={13} />

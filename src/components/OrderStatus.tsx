@@ -1,8 +1,10 @@
+// 10% tint, not more: the ink is the full-strength token, so a heavier tint
+// moves the background toward the text and costs contrast on 12px bold type.
 const TONE = {
-  delivered: 'bg-good/15 text-good',
-  sent: 'bg-accent/15 text-accent',
-  paid: 'bg-brand/15 text-brand',
-  unpaid: 'bg-bad/15 text-bad',
+  delivered: 'bg-good/10 text-good',
+  sent: 'bg-accent/10 text-accent',
+  paid: 'bg-brand/10 text-brand',
+  unpaid: 'bg-bad/10 text-bad',
 } as const
 
 /** Where an order sits on the unpaid → paid → sent → delivered ladder. */

@@ -10,7 +10,7 @@ export default function StatusBadge({
   label: string
   onClick?: () => void
 }) {
-  const cls = on ? 'bg-good/15 text-good' : 'bg-surface-2 text-ink-faint'
+  const cls = on ? 'bg-good/10 text-good' : 'bg-surface-2 text-ink-faint'
   if (onClick) {
     return (
       <button
