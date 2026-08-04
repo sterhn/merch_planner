@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem } from './types'
-import { formatRub } from './format'
-import { groupLinesByFandom, NO_FANDOM_LABEL } from './orderLines'
+import { formatDate, formatRub } from './format'
+import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL } from './orderLines'
 
 // Renders an order as shareable PNGs styled like the public store page
 // (sterhn/merch_page): dark ground, cream serif, teal accents, sharp-cornered
@@ -221,10 +221,10 @@ export async function renderOrderImage(
       }
     }),
   )
-  const linesTotal = lines.reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0)
+  const total = linesTotal(lines)
 
   const customer = order.telegram || order.customer_email || 'Order'
-  const date = new Date(order.created_at).toLocaleDateString('ru-RU')
+  const date = formatDate(order.created_at)
 
   const mctx = document.createElement('canvas').getContext('2d')
   if (!mctx) throw new Error('Canvas is not supported')
@@ -486,7 +486,7 @@ export async function renderOrderImage(
       ctx.textAlign = 'right'
       ctx.fillStyle = MUTED
       ctx.font = `600 11px ${SANS}`
-      ctx.fillText(`ITEMS TOTAL: ${formatRub(linesTotal)}`, cardRight, cy)
+      ctx.fillText(`ITEMS TOTAL: ${formatRub(total)}`, cardRight, cy)
       cy += 15
       if (order.total_price != null) {
         cy += 12

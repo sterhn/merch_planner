@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatRub } from '../lib/format'
+import { formatDate, formatRub, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import FilterChip from '../components/FilterChip'
 import Modal from '../components/Modal'
@@ -14,7 +14,8 @@ import SearchInput from '../components/SearchInput'
 import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
-import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
+import { groupLinesByFandom, linesTotal, sortLinesByPrice } from '../lib/orderLines'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, statusParts } from '../lib/printOrder'
 import {
   fandomGrouping,
   flushViewState,
@@ -152,6 +153,7 @@ export default function Orders() {
 
       // Printouts follow the grouping toggle set on the order screen.
       const groupByFandom = fandomGrouping()
+      const printedOn = formatDate(todayISO())
 
       const itemsByOrder = new Map<string, OrderItem[]>()
       for (const item of (allItems ?? []) as OrderItem[]) {
@@ -162,61 +164,33 @@ export default function Orders() {
       const ordersHtml = filtered
         .map((order) => {
           const items = itemsByOrder.get(order.id) ?? []
-          const linesTotal = items.reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0)
-
-          const rowsFor = (lines: OrderItem[]) =>
-            lines
-              .map((l) => {
-                const name = (l.item_id ? catalogMap.get(l.item_id)?.name : null) ?? l.name_text ?? '—'
-                return `<tr>
-                <td>${name}</td>
-                <td style="text-align:center">${l.qty}</td>
-                <td style="text-align:right">${formatRub(l.unit_price)}</td>
-                <td style="text-align:right">${formatRub((l.unit_price ?? 0) * l.qty)}</td>
-              </tr>`
-              })
-              .join('')
+          const total = linesTotal(items)
 
           const groups = groupByFandom ? groupLinesByFandom(items, catalogMap) : []
-          const itemRows =
-            groups.length > 1
-              ? groups
-                  .map(
-                    (g) =>
-                      `<tr class="group"><td colspan="4">${g.fandom ?? NO_FANDOM_LABEL}</td></tr>${rowsFor(g.lines)}`,
-                  )
-                  .join('')
-              : rowsFor(sortLinesByPrice(items))
-
-          const statusParts = [
-            order.paid ? '✓ Paid' : '✗ Not paid',
-            order.sent ? '✓ Sent' : '✗ Not sent',
-            order.delivered ? '✓ Delivered' : '✗ Not delivered',
-          ]
+          const itemRows = itemRowsHtml(
+            sortLinesByPrice(items),
+            catalogMap,
+            groups.length > 1 ? groups : null,
+          )
 
           const extraInfo = [
-            order.delivery_method ? `<span class="badge">${order.delivery_method}</span>` : '',
-            order.delivery_details ? `<div class="meta">${order.delivery_details}</div>` : '',
-            order.comment ? `<div class="meta comment">Note: ${order.comment}</div>` : '',
+            order.delivery_method ? `<span class="badge">${esc(order.delivery_method)}</span>` : '',
+            order.delivery_details ? `<div class="meta">${esc(order.delivery_details)}</div>` : '',
+            order.comment ? `<div class="meta comment">Note: ${esc(order.comment)}</div>` : '',
           ].filter(Boolean).join('')
 
           return `<div class="order">
             <div class="order-header">
-              <h2>${order.telegram || order.customer_email || 'Order'}</h2>
+              <h2>${esc(order.telegram || order.customer_email || 'Order')}</h2>
               ${extraInfo}
             </div>
-            <div class="status">${statusParts.join(' &nbsp;·&nbsp; ')}</div>
+            <div class="status">${statusParts(order).join(' &nbsp;·&nbsp; ')}</div>
             ${items.length > 0
               ? `<table>
-                  <thead><tr>
-                    <th>Item</th>
-                    <th style="text-align:center">Qty</th>
-                    <th style="text-align:right">Price</th>
-                    <th style="text-align:right">Subtotal</th>
-                  </tr></thead>
+                  <thead>${ITEM_TABLE_HEAD}</thead>
                   <tbody>${itemRows}</tbody>
                 </table>
-                <div class="items-total">Items total: ${formatRub(linesTotal)}</div>`
+                <div class="items-total">Items total: ${formatRub(total)}</div>`
               : '<p class="no-items">No items added</p>'
             }
             ${order.total_price != null ? `<div class="order-total">Order total: ${formatRub(order.total_price)}</div>` : ''}
@@ -232,7 +206,7 @@ export default function Orders() {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Orders – ${filterLabel}${deliveryLabel} – ${new Date().toLocaleDateString('ru-RU')}</title>
+  <title>Orders – ${filterLabel}${deliveryLabel} – ${printedOn}</title>
   <style>
     body { font-family: sans-serif; font-size: 12px; padding: 20px 28px; color: #111; max-width: 720px; margin: 0 auto; }
     h1 { font-size: 14px; color: #555; margin: 0 0 20px; font-weight: normal; }
@@ -253,18 +227,12 @@ export default function Orders() {
   </style>
 </head>
 <body>
-  <h1>Orders · ${filterLabel}${deliveryLabel} · ${new Date().toLocaleDateString('ru-RU')} · ${filtered.length} order${filtered.length !== 1 ? 's' : ''}</h1>
+  <h1>Orders · ${filterLabel}${deliveryLabel} · ${printedOn} · ${filtered.length} order${filtered.length !== 1 ? 's' : ''}</h1>
   ${ordersHtml}
 </body>
 </html>`
 
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(html)
-        win.document.close()
-        win.focus()
-        win.print()
-      }
+      openPrintWindow(html)
     } finally {
       setPrintLoading(false)
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fandomOf, groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from './orderLines'
+import { fandomOf, groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from './orderLines'
 import type { OrderItem } from './types'
 
 function line(
@@ -126,5 +126,19 @@ describe('groupLinesByFandom', () => {
 
   it('exposes a label for the fandom-less group', () => {
     expect(NO_FANDOM_LABEL).toBe('Other')
+  })
+})
+
+describe('linesTotal', () => {
+  it('multiplies unit price by quantity', () => {
+    expect(linesTotal([line('a', null, 0, 100, 2), line('b', null, 1, 50, 3)])).toBe(350)
+  })
+  it('counts unpriced lines as zero rather than NaN', () => {
+    expect(linesTotal([line('a', null, 0, null, 4), line('b', null, 1, 25, 2)])).toBe(50)
+  })
+  it('is zero for no lines', () => {
+    expect(linesTotal([])).toBe(0)
+    expect(linesTotal(null)).toBe(0)
+    expect(linesTotal(undefined)).toBe(0)
   })
 })

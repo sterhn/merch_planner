@@ -33,6 +33,27 @@ export function buildableCount(
   return Math.max(0, min)
 }
 
+/**
+ * buildableCount for every bundle, in one pass — callers rendering a list would
+ * otherwise pay O(items × components) on each render.
+ */
+export function buildableCounts(
+  bundles: Map<string, BundleComponent[]>,
+  itemById: Map<string, Item>,
+): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const bundleId of bundles.keys()) {
+    const count = buildableCount(bundleId, bundles, itemById)
+    if (count !== null) counts.set(bundleId, count)
+  }
+  return counts
+}
+
+/** "Sticker ×2 + Charm" — the component summary shown under a bundle. */
+export function summarizeParts(parts: readonly { name: string; qty: number }[]): string {
+  return parts.map((p) => (p.qty > 1 ? `${p.name} ×${p.qty}` : p.name)).join(' + ')
+}
+
 // The number that matters when selling: buildable count for bundles,
 // plain stock for everything else.
 export function effectiveStock(

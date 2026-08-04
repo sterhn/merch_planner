@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate, todayISO, currentMonth } from './format'
+import {
+  currentMonth,
+  daysFromTodayISO,
+  formatDate,
+  formatMonth,
+  formatRub,
+  localMonth,
+  monthKey,
+  monthRange,
+  parseCount,
+  parseMoney,
+  toISODate,
+  todayISO,
+} from './format'
 
 describe('formatRub', () => {
   it('formats numbers with the ruble sign', () => {
@@ -71,5 +84,52 @@ describe('toISODate / todayISO / currentMonth', () => {
     const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     expect(todayISO()).toBe(expected)
     expect(currentMonth()).toBe(expected.slice(0, 7))
+  })
+})
+
+describe('parseMoney', () => {
+  it('accepts the comma decimal separator a Russian keyboard produces', () => {
+    expect(parseMoney('1,5')).toBe(1.5)
+    expect(parseMoney('1.5')).toBe(1.5)
+    expect(parseMoney(' 1200 ')).toBe(1200)
+  })
+  it('treats blank as not-set rather than zero', () => {
+    expect(parseMoney('')).toBeNull()
+    expect(parseMoney('   ')).toBeNull()
+  })
+  it('rejects values that are not numbers', () => {
+    expect(parseMoney('abc')).toBeNull()
+    expect(parseMoney('1,2,3')).toBeNull()
+  })
+})
+
+describe('parseCount', () => {
+  it('rounds to a whole number', () => {
+    expect(parseCount('3')).toBe(3)
+    expect(parseCount('2,6')).toBe(3)
+  })
+  it('clamps to the given minimum', () => {
+    expect(parseCount('0', 1)).toBe(1)
+    expect(parseCount('-5', 1)).toBe(1)
+    expect(parseCount('-5')).toBe(0)
+  })
+  it('treats blank as not-set and rejects junk', () => {
+    expect(parseCount('')).toBeNull()
+    expect(parseCount('abc')).toBeNull()
+  })
+  it('accepts numbers as well as strings', () => {
+    expect(parseCount(4)).toBe(4)
+  })
+})
+
+describe('daysFromTodayISO', () => {
+  it('steps whole calendar days', () => {
+    expect(daysFromTodayISO(0)).toBe(todayISO())
+    const week = daysFromTodayISO(7)
+    expect(week > todayISO()).toBe(true)
+    expect(week).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+  it('lands on a real date across a month boundary', () => {
+    expect(daysFromTodayISO(45)).toMatch(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/)
   })
 })

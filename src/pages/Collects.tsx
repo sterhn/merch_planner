@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { Collect, CollectItem, Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { supabase } from '../lib/supabase'
-import { formatDate, formatRub, todayISO } from '../lib/format'
+import { formatDate, formatRub, parseCount, parseMoney, todayISO } from '../lib/format'
 import { showToast } from '../lib/toast'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
@@ -101,8 +101,8 @@ export default function Collects() {
       .map((p) => ({
         item_id: p.item_id || null,
         name_text: p.item_id ? null : p.name_text.trim(),
-        qty: Math.max(1, Math.round(Number(p.qty)) || 1),
-        print_cost: p.print_cost === '' ? null : Number(p.print_cost),
+        qty: parseCount(p.qty, 1) ?? 1,
+        print_cost: parseMoney(p.print_cost),
       }))
   }
 
@@ -111,8 +111,8 @@ export default function Collects() {
     const rows = positions
       .filter((p) => p.item_id || p.name_text.trim())
       .map((p) => ({
-        qty: Math.max(1, Math.round(Number(p.qty)) || 1),
-        print_cost: p.print_cost === '' ? null : Number(p.print_cost),
+        qty: parseCount(p.qty, 1) ?? 1,
+        print_cost: parseMoney(p.print_cost),
       }))
     return {
       qty: rows.reduce((s, p) => s + p.qty, 0),
@@ -145,8 +145,8 @@ export default function Collects() {
       vendor: form.vendor || null,
       qty: positionTotals.qty > 0 ? positionTotals.qty : (prev?.qty ?? null),
       print_cost: positionTotals.print > 0 ? positionTotals.print : (prev?.print_cost ?? 0),
-      commission: form.commission === '' ? 0 : Number(form.commission),
-      delivery_cost: form.delivery_cost === '' ? 0 : Number(form.delivery_cost),
+      commission: parseMoney(form.commission) ?? 0,
+      delivery_cost: parseMoney(form.delivery_cost) ?? 0,
       deadline: form.deadline || null,
       paid: form.paid,
     }
@@ -180,6 +180,10 @@ export default function Collects() {
   // The collect arrived: bump stock for linked items, turn free-text positions
   // into new catalog items (cost = this collect's per-unit cost), and stamp
   // received_at so it can't be applied twice.
+  //
+  // Not atomic: a failure partway leaves some stock applied while received_at
+  // stays null, so a retry would double-count those items. Making it safe needs
+  // a Postgres function doing the whole thing in one transaction.
   async function receive() {
     const saved = await doSave()
     if (!saved) return
@@ -201,16 +205,39 @@ export default function Collects() {
 
       const { data: rows, error } = await supabase.from('collect_items').select('*').eq('collect_id', saved.id)
       if (error) throw error
-      for (const r of (rows ?? []) as CollectItem[]) {
-        if (r.item_id) {
-          const { data: cur, error: curErr } = await supabase.from('items').select('stock_qty').eq('id', r.item_id).single()
-          if (curErr) throw curErr
-          const { error: updErr } = await supabase
-            .from('items')
-            .update({ stock_qty: (cur?.stock_qty ?? 0) + r.qty })
-            .eq('id', r.item_id)
-          if (updErr) throw updErr
-        } else if (r.name_text) {
+
+      const all = (rows ?? []) as CollectItem[]
+      const linked = all.filter((r): r is CollectItem & { item_id: string } => Boolean(r.item_id))
+      const freeText = all.filter((r) => !r.item_id && r.name_text)
+
+      // One read for every linked item instead of one per position. Quantities
+      // are accumulated per item first: two positions can point at the same
+      // item, and the writes below run concurrently, so they must not each
+      // apply a delta to the same starting stock.
+      const addByItem = new Map<string, number>()
+      for (const r of linked) addByItem.set(r.item_id, (addByItem.get(r.item_id) ?? 0) + r.qty)
+
+      if (addByItem.size > 0) {
+        const { data: current, error: curErr } = await supabase
+          .from('items')
+          .select('id, stock_qty')
+          .in('id', [...addByItem.keys()])
+        if (curErr) throw curErr
+        const stockById = new Map((current ?? []).map((i) => [i.id as string, (i.stock_qty as number) ?? 0]))
+
+        await Promise.all(
+          [...addByItem].map(async ([itemId, added]) => {
+            const { error: updErr } = await supabase
+              .from('items')
+              .update({ stock_qty: (stockById.get(itemId) ?? 0) + added })
+              .eq('id', itemId)
+            if (updErr) throw updErr
+          }),
+        )
+      }
+
+      await Promise.all(
+        freeText.map(async (r) => {
           const { data: created, error: insErr } = await supabase
             .from('items')
             .insert({ name: r.name_text, cost_price: unitCost(r), stock_qty: r.qty })
@@ -219,8 +246,8 @@ export default function Collects() {
           if (insErr) throw insErr
           const { error: linkErr } = await supabase.from('collect_items').update({ item_id: created.id }).eq('id', r.id)
           if (linkErr) throw linkErr
-        }
-      }
+        }),
+      )
       const { error: recvErr } = await supabase
         .from('collects')
         .update({ received_at: new Date().toISOString() })
@@ -263,6 +290,7 @@ export default function Collects() {
       <div className="space-y-2">
         {(collects ?? []).map((c) => {
           const overdue = !c.paid && c.deadline != null && c.deadline < today
+          const rowPositions = positionsByCollect.get(c.id) ?? []
           return (
             <button
               key={c.id}
@@ -276,9 +304,9 @@ export default function Collects() {
                 <p className="text-xs text-ink-muted">
                   {c.vendor ?? '—'} · {c.qty ?? '?'} pcs · {formatRub(c.cost_per_unit)}/pc
                 </p>
-                {(positionsByCollect.get(c.id) ?? []).length > 0 && (
+                {rowPositions.length > 0 && (
                   <p className="mt-0.5 truncate text-xs font-semibold text-brand">
-                    {(positionsByCollect.get(c.id) ?? []).map(positionLabel).join(' + ')}
+                    {rowPositions.map(positionLabel).join(' + ')}
                   </p>
                 )}
                 <p

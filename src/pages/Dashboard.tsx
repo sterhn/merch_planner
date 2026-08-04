@@ -5,7 +5,17 @@ import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/typ
 import { useList } from '../hooks/useTable'
 import { useSignOut } from '../hooks/useAuth'
 import EmptyState from '../components/EmptyState'
-import { currentMonth, formatDate, formatMonth, formatRub, localMonth, monthKey, monthRange, toISODate } from '../lib/format'
+import {
+  currentMonth,
+  daysFromTodayISO,
+  formatDate,
+  formatMonth,
+  formatRub,
+  localMonth,
+  monthKey,
+  monthRange,
+  todayISO,
+} from '../lib/format'
 import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
 import Card from '../components/Card'
@@ -122,9 +132,8 @@ export default function Dashboard() {
   }, [orders, shelf, expenses, period])
 
   const upcoming = useMemo(() => {
-    const now = new Date()
-    const today = toISODate(now)
-    const soon = toISODate(new Date(now.getTime() + 7 * 86400000))
+    const today = todayISO()
+    const soon = daysFromTodayISO(7)
     return (collects ?? [])
       .filter((c) => c.deadline != null && c.deadline >= today)
       .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))

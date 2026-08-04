@@ -17,7 +17,6 @@ export interface OrdersView {
 export interface LastOrder {
   id: string
   label: string
-  at: number
 }
 
 interface ViewState {
@@ -94,7 +93,7 @@ export function lastOrder(): LastOrder | null {
 
 export function rememberOrder(id: string, label: string) {
   if (state.lastOrder?.id === id && state.lastOrder.label === label) return
-  state = { ...state, lastOrder: { id, label, at: Date.now() } }
+  state = { ...state, lastOrder: { id, label } }
   schedule()
 }
 

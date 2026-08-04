@@ -1,7 +1,33 @@
+// Hoisted: AnimatedNumber calls formatRub once per animation frame, per instance.
+const RUB = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
+
 export function formatRub(value: number | null | undefined): string {
   if (value == null) return '—'
   // Non-breaking space so the ₽ never wraps to its own line
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value) + ' ₽'
+  return RUB.format(value) + ' ₽'
+}
+
+/**
+ * Parses a money field. Accepts the comma decimal separator a Russian keyboard
+ * produces — `Number('1,5')` is NaN, and every form but the shelf's rent field
+ * used to hit that. Blank means "not set" (null), not zero.
+ */
+export function parseMoney(input: string): number | null {
+  const trimmed = input.trim().replace(',', '.')
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Parses a whole-number field (quantities, stock). Blank means "not set" (null).
+ * `min` clamps the result — 1 for line quantities, 0 for counts that may be zero.
+ */
+export function parseCount(input: string | number, min = 0): number | null {
+  if (typeof input === 'string' && input.trim() === '') return null
+  const n = typeof input === 'number' ? input : Number(input.trim().replace(',', '.'))
+  if (!Number.isFinite(n)) return null
+  return Math.max(min, Math.round(n))
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
@@ -65,6 +91,16 @@ export function toISODate(d: Date): string {
 /** Today as YYYY-MM-DD in the user's local timezone. */
 export function todayISO(): string {
   return toISODate(new Date())
+}
+
+/**
+ * `days` from today as YYYY-MM-DD. Steps the date component rather than adding
+ * milliseconds, which lands on the wrong day across a DST boundary.
+ */
+export function daysFromTodayISO(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return toISODate(d)
 }
 
 /** Current month as YYYY-MM in the user's local timezone. */

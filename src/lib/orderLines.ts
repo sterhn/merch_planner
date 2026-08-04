@@ -12,6 +12,11 @@ export interface FandomGroup {
 /** Heading used for the trailing group of lines without a fandom. */
 export const NO_FANDOM_LABEL = 'Other'
 
+/** What the lines add up to. Unpriced lines count as zero. */
+export function linesTotal(lines: readonly OrderItem[] | null | undefined): number {
+  return (lines ?? []).reduce((sum, l) => sum + (l.unit_price ?? 0) * l.qty, 0)
+}
+
 export function fandomOf(line: OrderItem, catalog: ReadonlyMap<string, CatalogEntry>): string | null {
   const fandom = (line.item_id ? catalog.get(line.item_id) : undefined)?.fandom?.trim()
   return fandom ? fandom : null

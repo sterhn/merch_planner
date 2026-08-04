@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Store, Check, ReceiptText } from 'lucide-react'
 import type { Expense, ExpenseFeedRow, ShelfItem } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { currentMonth, formatMonth, formatRub } from '../lib/format'
+import { currentMonth, formatMonth, formatRub, parseCount, parseMoney } from '../lib/format'
 import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
@@ -109,10 +109,10 @@ export default function Shelf() {
     e.preventDefault()
     const values = {
       name: form.name,
-      price: form.price === '' ? null : Number(form.price),
+      price: parseMoney(form.price),
       month: form.month || null,
-      qty_sent: form.qty_sent === '' ? 0 : Number(form.qty_sent),
-      qty_sold: form.qty_sold === '' ? 0 : Number(form.qty_sold),
+      qty_sent: parseCount(form.qty_sent) ?? 0,
+      qty_sold: parseCount(form.qty_sold) ?? 0,
     }
     if (editing === 'new') insert.mutate(values, { onSuccess: () => setEditing(null) })
     else if (editing) update.mutate({ id: editing.id, values }, { onSuccess: () => setEditing(null) })
@@ -120,7 +120,7 @@ export default function Shelf() {
 
   function saveRent(e: React.FormEvent) {
     e.preventDefault()
-    const amount = Number(rentAmount.replace(',', '.'))
+    const amount = parseMoney(rentAmount) ?? 0
     if (!Number.isFinite(amount) || amount <= 0) return
     const m = rentMonth
     insertExpense.mutate(

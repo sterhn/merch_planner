@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 
@@ -7,16 +8,54 @@ interface ListOptions {
   select?: string
 }
 
+/**
+ * The sort deliberately stays out of the query key: the same table read with two
+ * different `orderBy`s is the same set of rows, and keying on it split `items`
+ * across three cache entries (and three requests) per session. The select string
+ * does stay in the key — it changes which columns and embeds come back.
+ */
 export function useList<T>(table: string, opts: ListOptions = {}) {
+  const { orderBy, ascending = true, select = '*' } = opts
+
+  // Memoised so TanStack doesn't re-sort on every render — it only re-runs
+  // `select` when the data or this function reference changes.
+  const sort = useCallback(
+    (rows: T[]) => (orderBy ? sortRows(rows, orderBy, ascending) : rows),
+    [orderBy, ascending],
+  )
+
   return useQuery({
-    queryKey: [table, opts.orderBy ?? null, opts.ascending ?? true, opts.select ?? '*'],
+    queryKey: [table, select],
     queryFn: async (): Promise<T[]> => {
-      let query = supabase.from(table).select(opts.select ?? '*')
-      if (opts.orderBy) query = query.order(opts.orderBy, { ascending: opts.ascending ?? true })
-      const { data, error } = await query
+      const { data, error } = await supabase.from(table).select(select)
       if (error) throw error
       return data as T[]
     },
+    select: sort,
+  })
+}
+
+/**
+ * Client-side equivalent of PostgREST's `.order(col, { ascending })`. Matches its
+ * null handling — nulls last ascending, first descending — by treating null as
+ * greater than every value and negating the whole comparison for descending.
+ * Strings use ru collation so Cyrillic names order sensibly rather than by code
+ * point.
+ */
+function sortRows<T>(rows: T[], column: string, ascending: boolean): T[] {
+  const key = column as keyof T
+  return [...rows].sort((a, b) => {
+    const x = a[key]
+    const y = b[key]
+    let cmp: number
+    if (x == null || y == null) {
+      cmp = x == null ? (y == null ? 0 : 1) : -1
+    } else if (typeof x === 'string' && typeof y === 'string') {
+      cmp = x.localeCompare(y, 'ru')
+    } else {
+      cmp = x < y ? -1 : x > y ? 1 : 0
+    }
+    return ascending ? cmp : -cmp
   })
 }
 

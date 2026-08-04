@@ -10,6 +10,14 @@ import { showToast } from './lib/toast'
 registerSW()
 
 const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Single-user app: nothing changes underneath you except your own writes,
+      // and those invalidate explicitly. Without this every tab focus refetched
+      // all six dashboard tables.
+      staleTime: 60_000,
+    },
+  },
   mutationCache: new MutationCache({
     onError: (error) => {
       showToast(`Save failed: ${error instanceof Error ? error.message : String(error)}`)

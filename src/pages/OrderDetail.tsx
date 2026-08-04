@@ -6,13 +6,14 @@ import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatDate, formatRub } from '../lib/format'
+import { formatDate, formatRub, parseCount, parseMoney } from '../lib/format'
 import { importedOrderRows, parseImportCode } from '../lib/importCode'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
-import { groupLinesByFandom, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
+import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, statusParts } from '../lib/printOrder'
 import { fandomGrouping, rememberOrder, setFandomGrouping } from '../lib/viewState'
 import StatusBadge from '../components/StatusBadge'
 import CatalogPicker from '../components/CatalogPicker'
@@ -53,7 +54,7 @@ function HeaderForm({
     onSave({
       telegram: form.telegram || null,
       customer_email: form.customer_email || null,
-      total_price: form.total_price === '' ? null : Number(form.total_price),
+      total_price: parseMoney(form.total_price),
       delivery_method: form.delivery_method || null,
       delivery_details: form.delivery_details || null,
       comment: form.comment || null,
@@ -153,8 +154,10 @@ export default function OrderDetail() {
   // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
   const updateOrder = useUpdate<Order>('orders', ['items'])
   const deleteOrder = useDelete('orders')
-  const insertLine = useInsert<OrderItem>('order_items')
-  const deleteLine = useDelete('order_items')
+  // The Orders list embeds order_items for its thumbnails and item-name search,
+  // so line writes have to refresh it too.
+  const insertLine = useInsert<OrderItem>('order_items', ['orders'])
+  const deleteLine = useDelete('order_items', ['orders'])
 
   const updateLine = useUpdate<OrderItem>('order_items')
 
@@ -186,8 +189,8 @@ export default function OrderDetail() {
   const orderedLines = useMemo(() => sortLinesByPrice(lines ?? []), [lines])
   const fandomGroups = useMemo(() => groupLinesByFandom(lines ?? [], itemNames), [lines, itemNames])
 
-  const linesTotal = useMemo(
-    () => (lines ?? []).reduce((s, l) => s + (l.unit_price ?? 0) * l.qty, 0),
+  const itemsTotal = useMemo(
+    () => linesTotal(lines),
     [lines],
   )
 
@@ -219,21 +222,13 @@ export default function OrderDetail() {
 
   if (!order) return <EmptyState icon={Loader2} spin message="Loading…" />
 
-  function invalidateDetail() {
-    qc.invalidateQueries({ queryKey: ['orders', id] })
-    qc.invalidateQueries({ queryKey: ['orders'] })
-  }
-
   function toggle(flag: 'paid' | 'sent' | 'delivered') {
     // Optimistic: flip the badge immediately, roll back if the save fails.
     const previous = qc.getQueryData<Order>(['orders', id])
     qc.setQueryData<Order>(['orders', id], (o) => (o ? { ...o, [flag]: !o[flag] } : o))
     updateOrder.mutate(
       { id: id!, values: { [flag]: !order![flag] } },
-      {
-        onSuccess: invalidateDetail,
-        onError: () => qc.setQueryData(['orders', id], previous),
-      },
+      { onError: () => qc.setQueryData(['orders', id], previous) },
     )
   }
 
@@ -246,13 +241,12 @@ export default function OrderDetail() {
         item_id: lineForm.item_id || null,
         name_text: lineForm.name_text || picked?.name || null,
         category: picked?.type ?? null,
-        qty: Number(lineForm.qty) || 1,
-        unit_price: lineForm.unit_price !== '' ? Number(lineForm.unit_price) : (picked?.sale_price ?? null),
+        qty: parseCount(lineForm.qty, 1) ?? 1,
+        unit_price: parseMoney(lineForm.unit_price) ?? picked?.sale_price ?? null,
         position: nextPosition,
       },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ['order_items', id] })
           setAddingLine(false)
           setLineForm({ item_id: '', name_text: '', qty: '1', unit_price: '' })
         },
@@ -276,7 +270,8 @@ export default function OrderDetail() {
     try {
       const { error } = await supabase.from('order_items').insert(rows)
       if (error) throw error
-      qc.invalidateQueries({ queryKey: ['order_items', id] })
+      qc.invalidateQueries({ queryKey: ['order_items'] })
+      qc.invalidateQueries({ queryKey: ['orders'] })
       setImporting(false)
       setImportText('')
     } catch (err) {
@@ -315,8 +310,8 @@ export default function OrderDetail() {
         id: editingLine.id,
         values: {
           ...(editingLine.item_id ? {} : { name_text: editForm.name_text || null }),
-          qty: Math.max(1, Math.round(Number(editForm.qty)) || 1),
-          unit_price: editForm.unit_price === '' ? null : Number(editForm.unit_price),
+          qty: parseCount(editForm.qty, 1) ?? 1,
+          unit_price: parseMoney(editForm.unit_price),
         },
       },
       { onSuccess: () => setEditingLine(null) },
@@ -325,48 +320,23 @@ export default function OrderDetail() {
 
   function printOrder() {
     const customerName = order!.telegram || order!.customer_email || 'Order'
-    const date = new Date(order!.created_at).toLocaleDateString('ru-RU')
-
-    const statusParts = [
-      order!.paid ? '✓ Paid' : '✗ Not paid',
-      order!.sent ? '✓ Sent' : '✗ Not sent',
-      order!.delivered ? '✓ Delivered' : '✗ Not delivered',
-    ]
-
-    const rowsFor = (group: OrderItem[]) =>
-      group
-        .map((l) => {
-          const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
-          const name = catalogItem?.name ?? l.name_text ?? '—'
-          const price = l.unit_price ?? 0
-          return `<tr>
-          <td>${name}</td>
-          <td style="text-align:center">${l.qty}</td>
-          <td style="text-align:right">${formatRub(price)}</td>
-          <td style="text-align:right">${formatRub(price * l.qty)}</td>
-        </tr>`
-        })
-        .join('')
+    const date = formatDate(order!.created_at)
 
     // The printout follows the on-screen grouping toggle.
-    const itemRows = grouped
-      ? fandomGroups
-          .map((g) => `<tr class="group"><td colspan="4">${g.fandom ?? NO_FANDOM_LABEL}</td></tr>${rowsFor(g.lines)}`)
-          .join('')
-      : rowsFor(orderedLines)
+    const itemRows = itemRowsHtml(orderedLines, itemNames, grouped ? fandomGroups : null)
 
     const extraInfo = [
-      order!.delivery_method ? `<p><strong>Delivery:</strong> ${order!.delivery_method}</p>` : '',
-      order!.delivery_details ? `<p><strong>Address:</strong> ${order!.delivery_details}</p>` : '',
-      order!.customer_email ? `<p><strong>Email:</strong> ${order!.customer_email}</p>` : '',
-      order!.comment ? `<p><strong>Comment:</strong> ${order!.comment}</p>` : '',
+      order!.delivery_method ? `<p><strong>Delivery:</strong> ${esc(order!.delivery_method)}</p>` : '',
+      order!.delivery_details ? `<p><strong>Address:</strong> ${esc(order!.delivery_details)}</p>` : '',
+      order!.customer_email ? `<p><strong>Email:</strong> ${esc(order!.customer_email)}</p>` : '',
+      order!.comment ? `<p><strong>Comment:</strong> ${esc(order!.comment)}</p>` : '',
     ].filter(Boolean).join('')
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Order – ${customerName}</title>
+  <title>Order – ${esc(customerName)}</title>
   <style>
     body { font-family: sans-serif; font-size: 13px; padding: 28px 32px; color: #111; max-width: 700px; margin: 0 auto; }
     h1 { font-size: 20px; margin: 0 0 2px; }
@@ -384,33 +354,22 @@ export default function OrderDetail() {
   </style>
 </head>
 <body>
-  <h1>${customerName}</h1>
+  <h1>${esc(customerName)}</h1>
   <div class="date">${date}</div>
-  <div class="status">${statusParts.join('<span style="color:#ccc"> | </span>')}</div>
+  <div class="status">${statusParts(order!).join('<span style="color:#ccc"> | </span>')}</div>
   <table>
     <thead>
-      <tr>
-        <th>Item</th>
-        <th style="text-align:center">Qty</th>
-        <th style="text-align:right">Price</th>
-        <th style="text-align:right">Subtotal</th>
-      </tr>
+      ${ITEM_TABLE_HEAD}
     </thead>
     <tbody>${itemRows}</tbody>
   </table>
-  <div class="items-total">Items total: ${formatRub(linesTotal)}</div>
+  <div class="items-total">Items total: ${formatRub(itemsTotal)}</div>
   ${order!.total_price != null ? `<div class="order-total">Order total: ${formatRub(order!.total_price)}</div>` : ''}
   ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}
 </body>
 </html>`
 
-    const win = window.open('', '_blank')
-    if (win) {
-      win.document.write(html)
-      win.document.close()
-      win.focus()
-      win.print()
-    }
+    openPrintWindow(html)
   }
 
   function renderLine(l: OrderItem) {
@@ -532,13 +491,13 @@ export default function OrderDetail() {
         )}
         {(lines ?? []).length > 0 && (
           <div className="mt-2 text-right">
-            <p className="font-display text-xs text-ink-muted">items total: {formatRub(linesTotal)}</p>
-            {Math.abs((order.total_price ?? 0) - linesTotal) > 0.005 && (
+            <p className="font-display text-xs text-ink-muted">items total: {formatRub(itemsTotal)}</p>
+            {Math.abs((order.total_price ?? 0) - itemsTotal) > 0.005 && (
               <p className="mt-1 text-xs font-semibold text-ink-muted print:hidden">
                 differs from order total {formatRub(order.total_price)} ·{' '}
                 <button
                   onClick={() =>
-                    updateOrder.mutate({ id: id!, values: { total_price: linesTotal } }, { onSuccess: invalidateDetail })
+                    updateOrder.mutate({ id: id!, values: { total_price: itemsTotal } })
                   }
                   disabled={updateOrder.isPending}
                   className="tap font-bold text-brand underline decoration-dotted disabled:opacity-50"
@@ -588,7 +547,7 @@ export default function OrderDetail() {
           key={`${order.id}-${order.total_price}`}
           order={order}
           pending={updateOrder.isPending}
-          onSave={(values) => updateOrder.mutate({ id: id!, values }, { onSuccess: invalidateDetail })}
+          onSave={(values) => updateOrder.mutate({ id: id!, values })}
         />
 
         <div className="mt-4">

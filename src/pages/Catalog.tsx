@@ -4,9 +4,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { deleteItemImage, uploadItemImage, uploadProductPhoto } from '../lib/images'
-import { buildableCount, groupBundles, type BundleComponent } from '../lib/bundles'
+import { buildableCounts, groupBundles, summarizeParts, type BundleComponent } from '../lib/bundles'
 import { supabase } from '../lib/supabase'
-import { formatRub } from '../lib/format'
+import { formatRub, parseCount, parseMoney } from '../lib/format'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
 import FilterChip from '../components/FilterChip'
@@ -148,6 +148,10 @@ export default function Catalog() {
 
   const bundleGroups = useMemo(() => groupBundles(rawBundles), [rawBundles])
 
+  // Precomputed once per data change: the list used to recompute this per item,
+  // per render, walking every component each time.
+  const canMakeById = useMemo(() => buildableCounts(bundleGroups, itemById), [bundleGroups, itemById])
+
   const bundleMap = useMemo(() => {
     const m = new Map<string, { name: string; qty: number }[]>()
     for (const [bundleId, comps] of bundleGroups) {
@@ -236,7 +240,7 @@ export default function Catalog() {
     const merged = new Map<string, number>()
     for (const row of bundleRows) {
       if (!row.component_id) continue
-      const qty = Math.max(1, Math.round(Number(row.qty)) || 1)
+      const qty = parseCount(row.qty, 1) ?? 1
       merged.set(row.component_id, (merged.get(row.component_id) ?? 0) + qty)
     }
     const rows = Array.from(merged, ([component_id, qty]) => ({ bundle_id: bundleId, component_id, qty }))
@@ -290,9 +294,9 @@ export default function Catalog() {
       sku: form.sku || null,
       name: form.name,
       description: form.description.trim() || null,
-      cost_price: form.cost_price === '' ? null : Number(form.cost_price),
-      sale_price: form.sale_price === '' ? null : Number(form.sale_price),
-      stock_qty: form.stock_qty === '' ? null : Number(form.stock_qty),
+      cost_price: parseMoney(form.cost_price),
+      sale_price: parseMoney(form.sale_price),
+      stock_qty: parseCount(form.stock_qty),
       image_url: imageUrl,
       product_photo_url: productUrl,
     }
@@ -356,7 +360,8 @@ export default function Catalog() {
 
       <div className="space-y-2">
         {filtered.map((item) => {
-          const canMake = buildableCount(item.id, bundleGroups, itemById)
+          const canMake = canMakeById.get(item.id) ?? null
+          const parts = bundleMap.get(item.id) ?? []
           const stockShown = canMake ?? item.stock_qty ?? 0
           return (
             <div key={item.id} className="flex w-full items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
@@ -381,10 +386,8 @@ export default function Catalog() {
                   <p className="truncate text-xs text-ink-muted">
                     {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
                   </p>
-                  {(bundleMap.get(item.id) ?? []).length > 0 && (
-                    <p className="mt-0.5 truncate text-xs font-semibold text-brand">
-                      {(bundleMap.get(item.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
-                    </p>
+                  {parts.length > 0 && (
+                    <p className="mt-0.5 truncate text-xs font-semibold text-brand">{summarizeParts(parts)}</p>
                   )}
                 </div>
                 <div className="shrink-0 text-right">
@@ -577,14 +580,14 @@ export default function Catalog() {
             )}
             {(bundleMap.get(viewing.id) ?? []).length > 0 && (
               <p className="mt-2 text-sm font-semibold text-brand">
-                {(bundleMap.get(viewing.id) ?? []).map((b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name)).join(' + ')}
+                {summarizeParts(bundleMap.get(viewing.id) ?? [])}
               </p>
             )}
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
               <p className="text-sm text-ink-muted">
                 cost {formatRub(viewing.cost_price)} · profit {formatRub(viewing.profit)} ·{' '}
-                {buildableCount(viewing.id, bundleGroups, itemById) !== null
-                  ? `can make ${buildableCount(viewing.id, bundleGroups, itemById)}`
+                {canMakeById.has(viewing.id)
+                  ? `can make ${canMakeById.get(viewing.id)}`
                   : `stock ${viewing.stock_qty ?? 0}`}
               </p>
               <p className="font-display text-lg">{formatRub(viewing.sale_price)}</p>

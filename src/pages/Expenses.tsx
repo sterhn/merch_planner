@@ -12,7 +12,7 @@ import {
 import type { Expense, ExpenseFeedRow } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList } from '../hooks/useTable'
-import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, todayISO } from '../lib/format'
+import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, parseMoney, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
@@ -82,7 +82,7 @@ export default function Expenses() {
         date: form.date,
         category: form.category,
         description: form.description || null,
-        amount: Number(form.amount),
+        amount: parseMoney(form.amount) ?? 0,
       },
       { onSuccess: () => setAdding(false) },
     )
