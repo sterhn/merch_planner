@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sortRows } from './useTable'
+import { sortRows } from './sortRows'
 
 /**
  * useList sorts client-side now, so its ordering has to stay indistinguishable

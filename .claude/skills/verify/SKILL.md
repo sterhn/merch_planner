@@ -22,6 +22,18 @@ What works instead:
 4. Mock item photos as canvas-generated `data:` URLs — outbound network is proxied and
    there are no real Supabase storage URLs available.
 
+## Run the gate on Node 20 before pushing
+
+CI pins `node-version: 20` (`.github/workflows/deploy.yml`); this box defaults to a
+newer Node, so a green local run is not proof CI is green. Use `/opt/node20/bin` on
+PATH for the final check.
+
+The trap this hides: `src/lib/supabase.ts` calls `createClient()` at module scope, and
+under Node < 22 `@supabase/realtime-js` throws for want of a global `WebSocket`. So any
+test that transitively imports the Supabase client passes locally and fails in CI.
+Keep unit tests on modules that don't reach it — that is why `sortRows` lives in
+`src/lib/sortRows.ts` rather than in `useTable.ts` beside its only caller.
+
 ## Checking schema-dependent work without Supabase
 
 The migrations in `supabase/migrations/` fully describe the schema, so a throwaway

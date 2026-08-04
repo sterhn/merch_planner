@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { sortRows } from '../lib/sortRows'
 
 interface ListOptions {
   orderBy?: string
@@ -32,30 +33,6 @@ export function useList<T>(table: string, opts: ListOptions = {}) {
       return data as T[]
     },
     select: sort,
-  })
-}
-
-/**
- * Client-side equivalent of PostgREST's `.order(col, { ascending })`. Matches its
- * null handling — nulls last ascending, first descending — by treating null as
- * greater than every value and negating the whole comparison for descending.
- * Strings use ru collation so Cyrillic names order sensibly rather than by code
- * point.
- */
-export function sortRows<T>(rows: T[], column: string, ascending: boolean): T[] {
-  const key = column as keyof T
-  return [...rows].sort((a, b) => {
-    const x = a[key]
-    const y = b[key]
-    let cmp: number
-    if (x == null || y == null) {
-      cmp = x == null ? (y == null ? 0 : 1) : -1
-    } else if (typeof x === 'string' && typeof y === 'string') {
-      cmp = x.localeCompare(y, 'ru')
-    } else {
-      cmp = x < y ? -1 : x > y ? 1 : 0
-    }
-    return ascending ? cmp : -cmp
   })
 }
 
