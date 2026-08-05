@@ -25,7 +25,9 @@ export function useCountUp(target: number) {
     const tick = (now: number) => {
       const t = duration === 0 ? 1 : Math.min((now - start) / duration, 1)
       const eased = 1 - Math.pow(1 - t, 3)
-      setValue(from + (target - from) * eased)
+      // Land exactly on the target: the eased sum can miss it by a float ulp,
+      // and consumers compare against the target to know the animation settled.
+      setValue(t < 1 ? from + (target - from) * eased : target)
       if (t < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)

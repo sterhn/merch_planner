@@ -1,6 +1,8 @@
 # Merch Planner
 
-Personal single-user merch shop tracker (orders, catalog, production runs, consignment shelf, expenses). Bilingual context: UI is English, data contains Russian (₽, ru-RU dates, Cyrillic item names).
+Personal single-user merch shop tracker (orders, catalog, production runs, expenses). Bilingual context: UI is English, data contains Russian (₽, ru-RU dates, Cyrillic item names).
+
+The consignment-shelf feature is **archived** (owner moved off the shelf, Aug 2026): `src/pages/Shelf.tsx`, its route and nav entry are removed, but the `shelf_items` table and its data remain, and the dashboard still folds historical shelf income into Revenue. To bring it back, restore `Shelf.tsx` from git history and re-add the route + nav entry.
 
 ## Before starting ANY work — sync with main
 
@@ -39,14 +41,18 @@ Report how many commits behind the branch was. Never build on a stale base — a
 
 All of build, test, and lint must pass before pushing. Deploys to GitHub Pages happen from `main`.
 
+Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each new file into the Supabase SQL Editor by hand. If a change depends on a new migration, say so loudly in the PR/summary.
+
 ## Design system pointers
 
 - Shared components: `src/components/`
   - Page scaffolding: `PageHeader.tsx` (title + action slot), `QueryState.tsx` (the loading/error/empty triad — pass the query's flags, it renders nothing once there's data), `Card.tsx` (+ `SectionLabel`), `EmptyState.tsx`
-  - Controls: `FormField.tsx` (`inputClass`, `textareaClass`, `Field`, `PrimaryButton`, `DangerButton`, `SecondaryButton`, `AddButton`, `IconButton`), `SearchInput.tsx`, `FilterChip.tsx`, `StatusBadge.tsx`
+  - Controls: `FormField.tsx` (`inputClass`, `textareaClass`, `Field`, `PrimaryButton`, `DangerButton`, `SecondaryButton`, `AddButton`, `IconButton`), `SearchInput.tsx`, `FilterChip.tsx`, `StatusBadge.tsx`, `RowEditor.tsx` (`PickRowButton`, `AddRowButton` for editable row lists)
   - Display: `StatTile.tsx`, `OrderStatus.tsx`, `AnimatedNumber.tsx`, `ExpenseChart.tsx`, `CatalogPicker.tsx`
-  - Behaviour: `Modal.tsx` (animated bottom sheet), `SwipeableRow.tsx`, `Toast.tsx`
+  - Behaviour: `Modal.tsx` (animated bottom sheet; traps focus, stacks — topmost sheet owns Escape/Tab), `ConfirmSheet.tsx` (`useConfirm` — themed replacement for `window.confirm`; never use the native dialog), `SwipeableRow.tsx`, `Toast.tsx`
 - Reach for the shared component before hand-rolling markup — the page header, the loading/error/empty triad, stat tiles and icon buttons each existed in five or six copies before they were extracted.
 - `SwipeableRow` ignores mouse pointers, so any swipe-only action also needs a visible button fallback for desktop.
 - Haptics: `src/lib/haptics.ts` — call `haptic()` on key taps/toggles
-- Touch targets ≥ 44px; inputs use 16px text (`text-base`) so iOS doesn't zoom on focus
+- Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
+- Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. Whole-number counts stay `type="number" inputMode="numeric"`.
+- Inputs use 16px text (`text-base`) so iOS doesn't zoom on focus

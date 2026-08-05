@@ -19,7 +19,15 @@ const queryClient = new QueryClient({
     },
   },
   mutationCache: new MutationCache({
-    onError: (error) => {
+    // Mutations pause while offline and resume on reconnect (TanStack's default
+    // networkMode) — say so, instead of leaving the save button silently pending.
+    onMutate: () => {
+      if (!navigator.onLine) showToast('Offline — this change will save when you reconnect.')
+    },
+    onError: (error, _variables, _context, mutation) => {
+      // Forms that show the failure inline (and stay open) opt out of the toast,
+      // so one failure doesn't surface as two differently-worded messages.
+      if (mutation.meta?.suppressErrorToast) return
       showToast(`Save failed: ${error instanceof Error ? error.message : String(error)}`)
     },
   }),

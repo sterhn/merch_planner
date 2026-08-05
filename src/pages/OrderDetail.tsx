@@ -13,9 +13,10 @@ import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, statusParts } from '../lib/printOrder'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, printPageHtml, SINGLE_ORDER_CSS, statusParts } from '../lib/printOrder'
 import { fandomGrouping, rememberOrder, setFandomGrouping } from '../lib/viewState'
 import StatusBadge from '../components/StatusBadge'
+import { useConfirm } from '../hooks/useConfirm'
 import CatalogPicker from '../components/CatalogPicker'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
@@ -71,8 +72,10 @@ function HeaderForm({
         <Field label="Email">
           <input className={inputClass} value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
         </Field>
+        {/* Money fields are text, not number: a number input rejects the comma
+            decimal separator a Russian keyboard produces (parseMoney handles it). */}
         <Field label="Total ₽">
-          <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={form.total_price} onChange={(e) => setForm({ ...form, total_price: e.target.value })} />
+          <input className={inputClass} type="text" inputMode="decimal" value={form.total_price} onChange={(e) => setForm({ ...form, total_price: e.target.value })} />
         </Field>
         <Field label="Delivery method">
           <select className={inputClass} value={form.delivery_method} onChange={(e) => setForm({ ...form, delivery_method: e.target.value })}>
@@ -113,7 +116,12 @@ export default function OrderDetail() {
     enabled: Boolean(id),
   })
 
-  const { data: lines, isLoading: linesLoading } = useQuery({
+  const {
+    data: lines,
+    isLoading: linesLoading,
+    isError: linesError,
+    refetch: refetchLines,
+  } = useQuery({
     queryKey: ['order_items', id],
     queryFn: async (): Promise<OrderItem[]> => {
       const { data, error } = await supabase
@@ -160,6 +168,7 @@ export default function OrderDetail() {
   const deleteLine = useDelete('order_items', ['orders'])
 
   const updateLine = useUpdate<OrderItem>('order_items')
+  const { confirm, element: confirmSheet } = useConfirm()
 
   const [addingLine, setAddingLine] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -332,29 +341,10 @@ export default function OrderDetail() {
       order!.comment ? `<p><strong>Comment:</strong> ${esc(order!.comment)}</p>` : '',
     ].filter(Boolean).join('')
 
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Order – ${esc(customerName)}</title>
-  <style>
-    body { font-family: sans-serif; font-size: 13px; padding: 28px 32px; color: #111; max-width: 700px; margin: 0 auto; }
-    h1 { font-size: 20px; margin: 0 0 2px; }
-    .date { color: #666; margin-bottom: 12px; font-size: 12px; }
-    .status { display: flex; gap: 20px; margin-bottom: 16px; font-size: 12px; color: #444; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-    th { text-align: left; border-bottom: 2px solid #333; padding: 5px 6px 5px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-    th:not(:first-child) { text-align: right; }
-    td { padding: 5px 6px 5px 0; border-bottom: 1px solid #eee; vertical-align: top; }
-    tr.group td { padding-top: 10px; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; color: #555; border-bottom: 1px solid #bbb; }
-    .items-total { text-align: right; font-size: 12px; color: #555; margin-bottom: 4px; }
-    .order-total { text-align: right; font-weight: bold; font-size: 15px; margin-bottom: 16px; }
-    .info { margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px; }
-    .info p { margin: 3px 0; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <h1>${esc(customerName)}</h1>
+    const html = printPageHtml(
+      `Order – ${customerName}`,
+      SINGLE_ORDER_CSS,
+      `<h1>${esc(customerName)}</h1>
   <div class="date">${date}</div>
   <div class="status">${statusParts(order!).join('<span style="color:#ccc"> | </span>')}</div>
   <table>
@@ -365,9 +355,8 @@ export default function OrderDetail() {
   </table>
   <div class="items-total">Items total: ${formatRub(itemsTotal)}</div>
   ${order!.total_price != null ? `<div class="order-total">Order total: ${formatRub(order!.total_price)}</div>` : ''}
-  ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}
-</body>
-</html>`
+  ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}`,
+    )
 
     openPrintWindow(html)
   }
@@ -404,9 +393,7 @@ export default function OrderDetail() {
           tone="danger"
           label={`Remove ${catalogItem?.name ?? l.name_text ?? 'item'}`}
           className="print:hidden"
-          onClick={() => {
-            if (confirm('Remove this item?')) deleteLine.mutate(l.id)
-          }}
+          onClick={() => confirm('Remove this item?', () => deleteLine.mutate(l.id))}
         />
       </li>
     )
@@ -471,8 +458,23 @@ export default function OrderDetail() {
             <AddButton onClick={() => setAddingLine(true)}>Add item</AddButton>
           </div>
         </div>
-        {(lines ?? []).length === 0 && (
-          <p className="py-3 text-sm text-ink-faint">{linesLoading ? 'Loading…' : 'No items.'}</p>
+        {/* A failed fetch must not read as an empty order — re-saving over
+            what merely looks like no items would be destructive. */}
+        {linesError ? (
+          <p className="py-3 text-sm font-semibold text-bad">
+            Failed to load items.{' '}
+            <button
+              type="button"
+              onClick={() => void refetchLines()}
+              className="tap font-bold text-brand underline decoration-dotted"
+            >
+              Retry
+            </button>
+          </p>
+        ) : (
+          (lines ?? []).length === 0 && (
+            <p className="py-3 text-sm text-ink-faint">{linesLoading ? 'Loading…' : 'No items.'}</p>
+          )
         )}
         {grouped ? (
           <div>
@@ -552,10 +554,11 @@ export default function OrderDetail() {
 
         <div className="mt-4">
           <DangerButton
-            onClick={() => {
-              if (confirm('Delete this whole order?'))
-                deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') })
-            }}
+            onClick={() =>
+              confirm('Delete this whole order?', () =>
+                deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') }),
+              )
+            }
           >
             Delete order
           </DangerButton>
@@ -589,7 +592,7 @@ export default function OrderDetail() {
               <input className={inputClass} type="number" min="1" inputMode="numeric" value={lineForm.qty} onChange={(e) => setLineForm({ ...lineForm, qty: e.target.value })} />
             </Field>
             <Field label="Unit price ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={lineForm.unit_price} onChange={(e) => setLineForm({ ...lineForm, unit_price: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={lineForm.unit_price} onChange={(e) => setLineForm({ ...lineForm, unit_price: e.target.value })} />
             </Field>
           </div>
           <PrimaryButton type="submit" disabled={insertLine.isPending}>
@@ -614,7 +617,7 @@ export default function OrderDetail() {
               <input className={inputClass} type="number" min="1" inputMode="numeric" value={editForm.qty} onChange={(e) => setEditForm({ ...editForm, qty: e.target.value })} />
             </Field>
             <Field label="Unit price ₽">
-              <input className={inputClass} type="number" step="0.01" inputMode="decimal" value={editForm.unit_price} onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })} />
+              <input className={inputClass} type="text" inputMode="decimal" value={editForm.unit_price} onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })} />
             </Field>
           </div>
           <PrimaryButton type="submit" disabled={updateLine.isPending}>
@@ -640,6 +643,8 @@ export default function OrderDetail() {
           </PrimaryButton>
         </form>
       </Modal>
+
+      {confirmSheet}
     </div>
   )
 }

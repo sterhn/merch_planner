@@ -10,7 +10,6 @@ import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Catalog from './pages/Catalog'
 import Collects from './pages/Collects'
-import Shelf from './pages/Shelf'
 import Expenses from './pages/Expenses'
 
 export default function App() {
@@ -49,7 +48,8 @@ export default function App() {
           <Route path="orders/:id" element={<OrderDetail />} />
           <Route path="catalog" element={<Catalog />} />
           <Route path="collects" element={<Collects />} />
-          <Route path="shelf" element={<Shelf />} />
+          {/* The consignment-shelf page is archived — restore src/pages/Shelf.tsx
+              from git history if the shelf ever comes back (see CLAUDE.md). */}
           <Route path="expenses" element={<Expenses />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -8,6 +8,8 @@ export default function AnimatedNumber({
   format?: (n: number) => string
 }) {
   const current = useCountUp(value)
-  const rounded = Math.round(current)
-  return <>{format ? format(rounded) : rounded}</>
+  // Whole numbers only while the count-up is in flight; the settled value
+  // renders exactly, so money amounts keep their kopecks.
+  const display = current === value ? value : Math.round(current)
+  return <>{format ? format(display) : display}</>
 }
