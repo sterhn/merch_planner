@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
@@ -13,7 +13,7 @@ import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, printPageHtml, SINGLE_ORDER_CSS, statusParts } from '../lib/printOrder'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, printPageHtml, RECEIPT_CSS, receiptBodyHtml, SINGLE_ORDER_CSS, statusParts } from '../lib/printOrder'
 import { fandomGrouping, rememberOrder, setFandomGrouping } from '../lib/viewState'
 import StatusBadge from '../components/StatusBadge'
 import { useConfirm } from '../hooks/useConfirm'
@@ -361,6 +361,15 @@ export default function OrderDetail() {
     openPrintWindow(html)
   }
 
+  function printReceipt() {
+    const html = printPageHtml(
+      `Receipt – ${order!.telegram || order!.customer_email || 'Order'}`,
+      RECEIPT_CSS,
+      receiptBodyHtml(order!, orderedLines, itemNames),
+    )
+    openPrintWindow(html)
+  }
+
   function renderLine(l: OrderItem) {
     const catalogItem = l.item_id ? itemNames.get(l.item_id) : undefined
     // Imported lines carry the store's type; manual lines fall back to the
@@ -418,6 +427,7 @@ export default function OrderDetail() {
           className={`print:hidden ${exporting ? '[&_svg]:animate-spin' : ''}`}
         />
         <IconButton icon={Printer} label="Print / PDF" onClick={printOrder} className="print:hidden" />
+        <IconButton icon={Receipt} label="Receipt" onClick={printReceipt} className="print:hidden" />
         <span className="font-display text-lg">{formatRub(order.total_price)}</span>
       </PageHeader>
 

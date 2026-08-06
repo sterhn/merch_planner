@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OrderItem } from './types'
-import { esc, itemRowsHtml, ORDER_LIST_CSS, printPageHtml, SINGLE_ORDER_CSS, statusParts } from './printOrder'
+import { esc, itemRowsHtml, ORDER_LIST_CSS, printPageHtml, RECEIPT_CSS, receiptBodyHtml, SINGLE_ORDER_CSS, statusParts } from './printOrder'
 
 function line(id: string, item_id: string | null, unit_price: number | null, qty = 1): OrderItem {
   return { id, item_id, name_text: null, unit_price, qty } as OrderItem
@@ -92,5 +92,92 @@ describe('printPageHtml', () => {
       expect(css).toContain('.items-total')
       expect(css).toContain('.order-total')
     }
+  })
+})
+
+const receiptOrder = {
+  id: 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
+  telegram: '@testuser',
+  customer_email: null,
+  total_price: 1500,
+  delivery_method: 'сдэк',
+  paid: true,
+  created_at: '2026-01-15T12:00:00Z',
+}
+
+describe('receiptBodyHtml', () => {
+  it('renders the receipt wrapper with stamp, items and total', () => {
+    const html = receiptBodyHtml(receiptOrder, [line('1', 'a', 500, 3)], catalog)
+    expect(html).toContain('class="receipt"')
+    expect(html).toContain('class="stamp"')
+    expect(html).toContain('class="items"')
+    expect(html).toContain('class="total"')
+  })
+
+  it('escapes customer names in the meta line', () => {
+    const order = { ...receiptOrder, telegram: '<script>xss</script>' }
+    const html = receiptBodyHtml(order, [], catalog)
+    expect(html).toContain('&lt;script&gt;xss&lt;/script&gt;')
+    expect(html).not.toContain('<script>xss</script>')
+  })
+
+  it('escapes item names from the catalog', () => {
+    const html = receiptBodyHtml(receiptOrder, [line('1', 'b', 200)], catalog)
+    expect(html).toContain('Fish &amp; Chips &lt;deluxe&gt;')
+  })
+
+  it('shows qty breakdown for multi-quantity items', () => {
+    const html = receiptBodyHtml(receiptOrder, [line('1', 'a', 100, 3)], catalog)
+    expect(html).toContain('3 &times;')
+    expect(html).toContain('item-qty')
+  })
+
+  it('omits qty breakdown for single-quantity items', () => {
+    const html = receiptBodyHtml(receiptOrder, [line('1', 'a', 100, 1)], catalog)
+    expect(html).not.toContain('item-qty')
+  })
+
+  it('includes the delivery method when present', () => {
+    const html = receiptBodyHtml(receiptOrder, [], catalog)
+    expect(html).toContain('Delivery:')
+    expect(html).toContain('сдэк')
+  })
+
+  it('shows the paid badge when paid', () => {
+    const html = receiptBodyHtml(receiptOrder, [], catalog)
+    expect(html).toContain('class="badge"')
+    expect(html).toContain('Paid')
+  })
+
+  it('omits the paid badge when unpaid', () => {
+    const html = receiptBodyHtml({ ...receiptOrder, paid: false }, [], catalog)
+    expect(html).not.toContain('class="badge"')
+  })
+
+  it('truncates a long order ID to a short form', () => {
+    const html = receiptBodyHtml(receiptOrder, [], catalog)
+    expect(html).toContain('aaaa…hhhh')
+    expect(html).not.toContain(receiptOrder.id)
+  })
+
+  it('includes a QR code SVG linking to the shop', () => {
+    const html = receiptBodyHtml(receiptOrder, [], catalog)
+    expect(html).toContain('class="qr"')
+    expect(html).toContain('<svg')
+    expect(html).toContain('t.me/hehearse_exe')
+  })
+
+  it('renders the thank-you message in Russian', () => {
+    const html = receiptBodyHtml(receiptOrder, [], catalog)
+    expect(html).toContain('Спасибо за покупку!')
+  })
+
+  it('RECEIPT_CSS styles the classes the body emits', () => {
+    expect(RECEIPT_CSS).toContain('.receipt')
+    expect(RECEIPT_CSS).toContain('.stamp')
+    expect(RECEIPT_CSS).toContain('.item-name')
+    expect(RECEIPT_CSS).toContain('.item-dots')
+    expect(RECEIPT_CSS).toContain('.total')
+    expect(RECEIPT_CSS).toContain('.qr')
   })
 })
