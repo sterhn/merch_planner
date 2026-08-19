@@ -201,13 +201,27 @@ export default function Catalog() {
     })
   }, [items, search, typeFilter, fandomFilter])
 
-  function autoSku(fandom: string) {
+  const TYPE_ABBR: Record<string, string> = {
+    'брелок': 'K', 'значок': 'B', 'карточка': 'C', 'открытка А6': 'PC',
+    'открытка А5': 'PC2', 'шейкер': 'SH', 'стикеры': 'SK', 'стенд': 'ST',
+    'гача': 'G', 'набор': 'SET', 'лента': 'RB', 'шоколадка': 'CH',
+  }
+
+  function autoSku(fandom: string, type: string) {
     const prefix = fandom.replace(/[[\]]/g, '').toUpperCase()
     if (!prefix) return ''
-    const count = (items ?? []).filter(
-      (i) => (i.fandom ?? '').replace(/[[\]]/g, '').toUpperCase() === prefix,
-    ).length
-    return `${prefix}-${String(count + 1).padStart(2, '0')}`
+    const typeCode = TYPE_ABBR[type]
+    if (!typeCode) return `${prefix}-01`
+    const tag = `${prefix}-${typeCode}-`
+    let max = 0
+    for (const i of items ?? []) {
+      const s = i.sku ?? ''
+      if (s.startsWith(tag)) {
+        const n = parseInt(s.slice(tag.length))
+        if (n > max) max = n
+      }
+    }
+    return `${tag}${String(max + 1).padStart(2, '0')}`
   }
 
   function openEditor(item: Item | 'new') {
@@ -417,7 +431,10 @@ export default function Catalog() {
             <Field label="Type">
               <ComboSelect
                 value={form.type}
-                onChange={(v) => setForm({ ...form, type: v })}
+                onChange={(v) => {
+                  const sku = form.fandom ? autoSku(form.fandom, v) : ''
+                  setForm({ ...form, type: v, ...(sku && !form.sku ? { sku } : {}) })
+                }}
                 options={types}
                 placeholder="брелок / значок…"
               />
@@ -426,7 +443,7 @@ export default function Catalog() {
               <ComboSelect
                 value={form.fandom}
                 onChange={(v) => {
-                  const sku = form.sku || autoSku(v)
+                  const sku = form.sku || autoSku(v, form.type)
                   setForm({ ...form, fandom: v, sku })
                 }}
                 options={fandoms}
