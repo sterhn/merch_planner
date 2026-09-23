@@ -19,6 +19,7 @@ import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import { SECTIONS } from '../components/sections'
+import { TONE_BLOB } from '../components/tones'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SwipeableRow from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
@@ -137,7 +138,7 @@ export default function Expenses() {
               const CategoryIcon = CATEGORY_ICONS[row.category] ?? MoreHorizontal
               const content = (
                 <div className="flex items-center gap-3 rounded-card glass p-3.5">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[38%] bg-peach/15 text-peach">
+                  <span className={`flex size-9 shrink-0 items-center justify-center rounded-[38%] ${TONE_BLOB[SECTIONS.expenses.tone]}`}>
                     <CategoryIcon size={16} />
                   </span>
                   <div className="min-w-0 flex-1">

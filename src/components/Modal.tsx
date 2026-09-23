@@ -121,7 +121,7 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
           <h2 className="font-display text-lg">{title}</h2>
           <button
             onClick={requestClose}
-            className="tap flex size-10 items-center justify-center rounded-full bg-surface-2 text-ink-faint hover:text-ink"
+            className="tap flex size-11 items-center justify-center rounded-full bg-surface-2 text-ink-faint hover:text-ink"
             aria-label="Close"
           >
             <X size={18} />
