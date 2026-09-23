@@ -403,8 +403,13 @@ export default function Catalog() {
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{item.name}</p>
+                  {/* Two lines: run together, the money was always the part a
+                      phone-width row truncated away. */}
                   <p className="truncate text-xs text-ink-muted">
-                    {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
+                    {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'}
+                  </p>
+                  <p className="truncate text-xs text-ink-muted">
+                    cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
                   </p>
                   {parts.length > 0 && (
                     <p className="mt-0.5 truncate text-xs font-semibold text-brand">{summarizeParts(parts)}</p>
@@ -456,6 +461,21 @@ export default function Catalog() {
               placeholder="optional product code"
             />
           </Field>
+          {/* The numbers every item needs sit up here with its name, ahead of
+              the optional description, photos and bundle list. */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* Money fields are text, not number: a number input rejects the comma
+                decimal separator a Russian keyboard produces (parseMoney handles it). */}
+            <Field label="Cost ₽">
+              <input className={inputClass} type="text" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
+            </Field>
+            <Field label="Price ₽">
+              <input className={inputClass} type="text" inputMode="decimal" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
+            </Field>
+            <Field label="Stock">
+              <input className={inputClass} type="number" inputMode="numeric" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} />
+            </Field>
+          </div>
           <Field label="Description">
             <textarea
               className={textareaClass}
@@ -531,19 +551,6 @@ export default function Catalog() {
               )}
             </div>
           </Field>
-          <div className="grid grid-cols-3 gap-3">
-            {/* Money fields are text, not number: a number input rejects the comma
-                decimal separator a Russian keyboard produces (parseMoney handles it). */}
-            <Field label="Cost ₽">
-              <input className={inputClass} type="text" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
-            </Field>
-            <Field label="Price ₽">
-              <input className={inputClass} type="text" inputMode="decimal" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
-            </Field>
-            <Field label="Stock">
-              <input className={inputClass} type="number" inputMode="numeric" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} />
-            </Field>
-          </div>
           <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
             {uploading ? 'Uploading photo…' : 'Save'}
           </PrimaryButton>
