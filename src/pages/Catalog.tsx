@@ -8,6 +8,7 @@ import { buildableCounts, groupBundles, summarizeParts, type BundleComponent } f
 import { supabase } from '../lib/supabase'
 import { failureMessage } from '../lib/errorMessage'
 import { formatRub, parseCount, parseMoney } from '../lib/format'
+import { nextSku } from '../lib/sku'
 import Modal from '../components/Modal'
 import CatalogPicker from '../components/CatalogPicker'
 import { useConfirm } from '../hooks/useConfirm'
@@ -140,6 +141,10 @@ export default function Catalog() {
   // Index of the bundle row whose component picker modal is open
   const [pickerFor, setPickerFor] = useState<number | null>(null)
   const [form, setForm] = useState(EMPTY)
+  // While true the SKU is ours to fill: it follows every type/fandom change,
+  // keystroke by keystroke when either is typed in new. Typing a SKU of your
+  // own takes it over; clearing the field hands it back.
+  const [skuAuto, setSkuAuto] = useState(true)
   const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
   const [itemPhoto, setItemPhoto] = useState<File | null>(null)
   const [productPhoto, setProductPhoto] = useState<File | null>(null)
@@ -204,27 +209,13 @@ export default function Catalog() {
     })
   }, [items, search, typeFilter, fandomFilter])
 
-  const TYPE_ABBR: Record<string, string> = {
-    'брелок': 'K', 'значок': 'B', 'карточка': 'C', 'открытка А6': 'PC',
-    'открытка А5': 'PC2', 'шейкер': 'SH', 'стикеры': 'SK', 'стенд': 'ST',
-    'гача': 'G', 'набор': 'SET', 'лента': 'RB', 'шоколадка': 'CH',
-  }
-
-  function autoSku(fandom: string, type: string) {
-    const prefix = fandom.replace(/[[\]]/g, '').toUpperCase()
-    if (!prefix) return ''
-    const typeCode = TYPE_ABBR[type]
-    if (!typeCode) return `${prefix}-01`
-    const tag = `${prefix}-${typeCode}-`
-    let max = 0
-    for (const i of items ?? []) {
-      const s = i.sku ?? ''
-      if (s.startsWith(tag)) {
-        const n = parseInt(s.slice(tag.length))
-        if (n > max) max = n
-      }
-    }
-    return `${tag}${String(max + 1).padStart(2, '0')}`
+  // Type or fandom changed: re-derive the SKU while it's still auto-filled.
+  function setClass(patch: { type: string } | { fandom: string }) {
+    setForm((f) => {
+      const next = { ...f, ...patch }
+      if (!skuAuto) return next
+      return { ...next, sku: nextSku(next.fandom, next.type, (items ?? []).map((i) => i.sku)) }
+    })
   }
 
   function openEditor(item: Item | 'new') {
@@ -233,6 +224,8 @@ export default function Catalog() {
     setProductPhoto(null)
     setPhotoError(null)
     setSaveError(null)
+    // An item that already has a SKU keeps it; one without gets autofill.
+    setSkuAuto(item === 'new' || !item.sku)
     if (item === 'new') {
       setForm(EMPTY)
       setBundleRows([])
@@ -435,10 +428,7 @@ export default function Catalog() {
             <Field label="Type">
               <ComboSelect
                 value={form.type}
-                onChange={(v) => {
-                  const sku = form.fandom ? autoSku(form.fandom, v) : ''
-                  setForm({ ...form, type: v, ...(sku && !form.sku ? { sku } : {}) })
-                }}
+                onChange={(v) => setClass({ type: v })}
                 options={types}
                 placeholder="брелок / значок…"
               />
@@ -446,10 +436,7 @@ export default function Catalog() {
             <Field label="Fandom">
               <ComboSelect
                 value={form.fandom}
-                onChange={(v) => {
-                  const sku = form.sku || autoSku(v, form.type)
-                  setForm({ ...form, fandom: v, sku })
-                }}
+                onChange={(v) => setClass({ fandom: v })}
                 options={fandoms}
                 placeholder="kdj / tgcf…"
               />
@@ -459,7 +446,15 @@ export default function Catalog() {
             <input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="SKU">
-            <input className={inputClass} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="optional product code" />
+            <input
+              className={inputClass}
+              value={form.sku}
+              onChange={(e) => {
+                setForm({ ...form, sku: e.target.value })
+                setSkuAuto(e.target.value === '')
+              }}
+              placeholder="optional product code"
+            />
           </Field>
           <Field label="Description">
             <textarea
