@@ -408,7 +408,18 @@ export default function OrderDetail() {
             </p>
             {note && <p className="text-xs text-ink-faint">{note}</p>}
           </div>
-          <span className="shrink-0 text-sm font-semibold">{formatRub(l.unit_price)}</span>
+          {/* The line total, as the printout and the shared image show it — a
+              bare unit price on a ×2 line didn't add up to the items total. */}
+          <span className="shrink-0 text-right">
+            <span className="block text-sm font-semibold">
+              {formatRub(l.unit_price != null ? l.unit_price * l.qty : null)}
+            </span>
+            {l.qty > 1 && l.unit_price != null && (
+              <span className="block text-2xs text-ink-faint">
+                {l.qty} × {formatRub(l.unit_price)}
+              </span>
+            )}
+          </span>
         </button>
         <IconButton
           icon={Trash2}
@@ -432,7 +443,18 @@ export default function OrderDetail() {
         Back to orders
       </button>
 
-      <PageHeader title={order.telegram || order.customer_email || 'Order'}>
+      <PageHeader
+        title={order.telegram || order.customer_email || 'Order'}
+        // The total rides under the name, not beside the three export buttons,
+        // where it squeezed a longer handle down to "@sakura_…".
+        subtitle={
+          <>
+            <span className="font-display text-base text-ink">{formatRub(order.total_price)}</span>
+            {' · '}
+            {formatDate(order.created_at)}
+          </>
+        }
+      >
         <IconButton
           icon={exporting ? Loader2 : ImageDown}
           label="Share as image"
@@ -442,7 +464,6 @@ export default function OrderDetail() {
         />
         <IconButton icon={Printer} label="Print / PDF" onClick={printOrder} className="print:hidden" />
         <IconButton icon={Receipt} label="Receipt" onClick={printReceipt} className="print:hidden" />
-        <span className="font-display text-lg">{formatRub(order.total_price)}</span>
       </PageHeader>
 
       <div className="mb-5 flex gap-2 *:flex-1 print:hidden">
