@@ -154,7 +154,8 @@
   @media (hover: hover) {
     &:hover {
       transform: translateY(-2px);
-      box-shadow: var(--shadow-lift);
+      /* Keeps the glass rim — every lift card is a glass pane. */
+      box-shadow: inset 0 1px 0 var(--glass-rim), 0 0 0 2px var(--glass-ring, transparent), var(--shadow-lift);
     }
   }
   &:active {
@@ -163,8 +164,45 @@
   }
 }
 
+/* Liquid glass: a translucent pane that blurs and saturates whatever sits
+   behind it, with a bright rim along the top edge and a faint diagonal sheen.
+   `--glass-fill` sets how much solid surface shows through; sheets that hold
+   the utility reads it with a fallback so `[--glass-fill:80%]` can override.
+   backdrop-filter makes the element a containing block for fixed-position
+   descendants, same as a transform — never put `glass` on an ancestor of Modal. */
+@utility glass {
+  background-color: color-mix(in oklch, var(--color-surface) var(--glass-fill, 64%), transparent);
+  background-image: linear-gradient(135deg, var(--glass-sheen), transparent 45%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 -1px 0 var(--glass-under),
+    0 0 0 2px var(--glass-ring, transparent),
+    var(--shadow-card);
+}
+
+/* A red halo for a glass pane that needs attention (e.g. an overdue collect).
+   Tailwind's ring-* is also a box-shadow and would fight glass for it. */
+@utility glass-alert {
+  --glass-ring: color-mix(in oklch, var(--color-bad) 50%, transparent);
+}
+
 :root {
   color-scheme: light dark;
+
+  --glass-edge: light-dark(oklch(1 0 0 / 70%), oklch(1 0 0 / 9%));
+  --glass-rim: light-dark(oklch(1 0 0 / 95%), oklch(1 0 0 / 14%));
+  --glass-under: light-dark(oklch(0.4 0.08 300 / 6%), oklch(0 0 0 / 25%));
+  --glass-sheen: light-dark(oklch(1 0 0 / 55%), oklch(1 0 0 / 5%));
+  /* Candy-gloss top edge on filled brand surfaces (buttons, the hero card) */
+  --glass-gloss: light-dark(oklch(1 0 0 / 35%), oklch(1 0 0 / 30%));
+
+  /* Graph paper: a fine grid with a heavier line every fifth square */
+  --grid-minor: light-dark(oklch(0.52 0.1 295 / 9%), oklch(0.8 0.08 295 / 6%));
+  --grid-major: light-dark(oklch(0.52 0.1 295 / 17%), oklch(0.8 0.08 295 / 11%));
+  --grid-step: 22px;
 }
 
 html {
@@ -180,12 +218,27 @@ html {
 
 body {
   @apply bg-page font-sans text-ink antialiased;
-  /* A faint polka-dot paper. Fixed so it doesn't crawl while scrolling. */
-  background-image: radial-gradient(
-    color-mix(in oklch, var(--color-brand) 13%, transparent) 1.2px,
-    transparent 1.2px
-  );
-  background-size: 22px 22px;
+  /* Graph paper over a soft wash of section colours — the wash is what the
+     glass panes pick up and blur. Fixed so neither crawls while scrolling. */
+  background-image:
+    linear-gradient(to right, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-minor) 1px, transparent 1px),
+    radial-gradient(38rem 30rem at 0% 0%, color-mix(in oklch, var(--color-brand) 16%, transparent), transparent 70%),
+    radial-gradient(34rem 28rem at 100% 18%, color-mix(in oklch, var(--color-brand-2) 13%, transparent), transparent 70%),
+    radial-gradient(36rem 30rem at 12% 100%, color-mix(in oklch, var(--color-sky) 13%, transparent), transparent 70%),
+    radial-gradient(30rem 26rem at 95% 95%, color-mix(in oklch, var(--color-peach) 11%, transparent), transparent 70%);
+  background-size:
+    calc(var(--grid-step) * 5) calc(var(--grid-step) * 5),
+    calc(var(--grid-step) * 5) calc(var(--grid-step) * 5),
+    var(--grid-step) var(--grid-step),
+    var(--grid-step) var(--grid-step),
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+  background-position: -1px -1px;
   background-attachment: fixed;
 }
 

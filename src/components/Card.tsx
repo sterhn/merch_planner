@@ -17,7 +17,7 @@ export default function Card({
   action?: ReactNode
 }) {
   return (
-    <div {...props} className={`rounded-card bg-surface p-4 shadow-card ${className}`}>
+    <div {...props} className={`rounded-card glass p-4 ${className}`}>
       {(title || action) && (
         <div className="mb-2 flex items-center justify-between gap-2">
           {title && <SectionLabel>{title}</SectionLabel>}

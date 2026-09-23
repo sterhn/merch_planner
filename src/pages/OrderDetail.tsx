@@ -29,6 +29,7 @@ import {
   IconButton,
   inputClass,
   PrimaryButton,
+  SecondaryButton,
   textareaClass,
 } from '../components/FormField'
 
@@ -63,7 +64,7 @@ function HeaderForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-card bg-surface p-4 shadow-card">
+    <form onSubmit={submit} className="rounded-card glass p-4">
       <h2 className="mb-3 font-display text-sm text-ink-muted">Details</h2>
       <div className="grid gap-x-3 md:grid-cols-2">
         <Field label="Telegram">
@@ -241,8 +242,11 @@ export default function OrderDetail() {
     )
   }
 
-  function addLine(e: React.FormEvent) {
+  function addLine(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // "Add & next" keeps the sheet open, so a many-item order isn't a
+    // reopen-the-sheet round trip per line.
+    const another = (e.nativeEvent as SubmitEvent).submitter?.dataset.next === '1'
     const picked = lineForm.item_id ? itemNames.get(lineForm.item_id) : undefined
     insertLine.mutate(
       {
@@ -256,8 +260,9 @@ export default function OrderDetail() {
       },
       {
         onSuccess: () => {
-          setAddingLine(false)
           setLineForm({ item_id: '', name_text: '', qty: '1', unit_price: '' })
+          if (another) showToast(`Added ${picked?.name || lineForm.name_text || 'item'}`)
+          else setAddingLine(false)
         },
       },
     )
@@ -437,7 +442,7 @@ export default function OrderDetail() {
         <StatusBadge on={order.delivered} label="delivered" onClick={() => toggle('delivered')} />
       </div>
 
-      <section className="mb-6 rounded-card bg-surface p-4 shadow-card">
+      <section className="mb-6 rounded-card glass p-4">
         {/* Wraps as a whole on narrow screens or at large font sizes, so the
             button labels never break across two lines. */}
         <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -523,7 +528,7 @@ export default function OrderDetail() {
       </section>
 
       {(pastOrders?.length ?? 0) > 0 && (
-        <section className="mb-6 rounded-card bg-surface p-4 shadow-card print:hidden">
+        <section className="mb-6 rounded-card glass p-4 print:hidden">
           <div className="mb-1 flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-1.5 font-display text-sm text-ink-muted">
               <History size={14} />
@@ -605,9 +610,14 @@ export default function OrderDetail() {
               <input className={inputClass} type="text" inputMode="decimal" value={lineForm.unit_price} onChange={(e) => setLineForm({ ...lineForm, unit_price: e.target.value })} />
             </Field>
           </div>
-          <PrimaryButton type="submit" disabled={insertLine.isPending}>
-            Add
-          </PrimaryButton>
+          <div className="flex gap-2">
+            <SecondaryButton type="submit" data-next="1" disabled={insertLine.isPending} className="h-12 shrink-0">
+              Add &amp; next
+            </SecondaryButton>
+            <PrimaryButton type="submit" disabled={insertLine.isPending}>
+              Add
+            </PrimaryButton>
+          </div>
         </form>
       </Modal>
 

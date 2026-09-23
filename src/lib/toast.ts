@@ -1,6 +1,12 @@
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface ToastMessage {
   id: number
   text: string
+  action?: ToastAction
 }
 
 let nextId = 0
@@ -11,14 +17,17 @@ function emit() {
   for (const listener of listeners) listener(messages)
 }
 
-export function showToast(text: string) {
-  const id = ++nextId
-  messages = [...messages, { id, text }]
+export function dismissToast(id: number) {
+  messages = messages.filter((m) => m.id !== id)
   emit()
-  setTimeout(() => {
-    messages = messages.filter((m) => m.id !== id)
-    emit()
-  }, 5000)
+}
+
+/** Shows a toast for 5 s. An `action` (e.g. Undo) renders as a button on it. */
+export function showToast(text: string, action?: ToastAction) {
+  const id = ++nextId
+  messages = [...messages, { id, text, action }]
+  emit()
+  setTimeout(() => dismissToast(id), 5000)
 }
 
 export function subscribeToasts(listener: (msgs: ToastMessage[]) => void): () => void {

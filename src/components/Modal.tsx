@@ -108,7 +108,7 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`max-h-[90dvh] w-full overflow-y-auto rounded-t-sheet bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] outline-none md:max-w-lg md:rounded-sheet md:pb-5 ${
+        className={`max-h-[90dvh] w-full overflow-y-auto rounded-t-sheet bg-surface p-5 shadow-[inset_0_1px_0_var(--glass-rim)] pb-[max(1.25rem,env(safe-area-inset-bottom))] outline-none md:max-w-lg md:rounded-sheet md:pb-5 ${
           closing ? 'animate-sheet-down md:animate-fade-out' : 'animate-sheet-up md:animate-pop'
         }`}
         onClick={(e) => e.stopPropagation()}

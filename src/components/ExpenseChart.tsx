@@ -68,7 +68,7 @@ export default function ExpenseChart({ months }: { months: MonthTotal[] }) {
   const labelEvery = months.length > 20 ? 2 : 1
 
   return (
-    <section className="mb-5 animate-pop rounded-card bg-surface p-4 shadow-card">
+    <section className="mb-5 animate-pop rounded-card glass p-4">
       <p className="text-3xs font-bold uppercase tracking-widest text-ink-faint">Monthly expenses</p>
       <div className="mt-1 mb-2 flex items-baseline justify-between gap-2">
         <p className="font-display text-sm">{formatMonth(active.month)}</p>

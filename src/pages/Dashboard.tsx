@@ -91,7 +91,7 @@ function HeroCard({ value, revenue }: { value: number; revenue: number }) {
   const margin = revenue > 0 ? Math.round((value / revenue) * 100) : null
   return (
     <div
-      className="relative animate-pop overflow-hidden rounded-card bg-linear-to-br from-brand-strong to-brand-strong-2 p-5 shadow-card"
+      className="relative animate-pop overflow-hidden rounded-card bg-linear-to-br from-brand-strong to-brand-strong-2 p-5 shadow-card inset-shadow-[0_1px_0_var(--glass-gloss)]"
       style={{ animationDelay: '0ms' }}
     >
       {/* Decorative sparkles and a soft glow blob */}
@@ -130,7 +130,7 @@ function ActionCard({ label, count, to, tone, icon: Icon, index }: {
   return (
     <Link
       to={to}
-      className="lift flex animate-pop items-center gap-3 rounded-card bg-surface p-3.5 shadow-card"
+      className="lift flex animate-pop items-center gap-3 rounded-card glass p-3.5"
       style={{ animationDelay: `${(index + 4) * 60}ms` }}
     >
       <span className={`grid size-10 shrink-0 place-items-center rounded-[38%] ${TONE_BLOB[tone]}`} aria-hidden>
@@ -209,7 +209,8 @@ export default function Dashboard() {
     const today = todayISO()
     const soon = daysFromTodayISO(7)
     return (collects ?? [])
-      .filter((c) => c.deadline != null && c.deadline >= today)
+      // A collect that already arrived has nothing left to be due.
+      .filter((c) => !c.received_at && c.deadline != null && c.deadline >= today)
       .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))
       .slice(0, 3)
       .map((c) => ({ ...c, urgent: c.deadline! <= soon, days: daysBetween(today, c.deadline!) }))
@@ -278,7 +279,7 @@ export default function Dashboard() {
             to={a.to}
             onClick={() => haptic(5)}
             aria-label={`Add ${a.label.toLowerCase()}`}
-            className="group lift flex animate-pop flex-col items-center gap-1.5 rounded-card bg-surface px-1 py-3 shadow-card md:flex-row md:justify-center md:gap-2.5 md:py-2.5"
+            className="group lift flex animate-pop flex-col items-center gap-1.5 rounded-card glass px-1 py-3 md:flex-row md:justify-center md:gap-2.5 md:py-2.5"
             style={{ animationDelay: `${i * 40}ms` }}
           >
             <span className={`grid size-10 place-items-center rounded-[38%] ${TONE_BLOB[a.tone]}`} aria-hidden>
@@ -291,7 +292,7 @@ export default function Dashboard() {
 
       <div className="mb-2 flex items-center justify-between">
         <h2 className="font-display text-base">Overview</h2>
-        <div className="flex items-center rounded-full bg-surface shadow-card">
+        <div className="flex items-center rounded-full glass">
           <button
             type="button"
             onClick={() => shiftPeriod(-1)}
@@ -418,7 +419,7 @@ export default function Dashboard() {
               <Link
                 key={c.id}
                 to="/collects"
-                className="lift flex items-center justify-between gap-3 rounded-card bg-surface p-3.5 shadow-card"
+                className="lift flex items-center justify-between gap-3 rounded-card glass p-3.5"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <span className={`grid size-10 shrink-0 place-items-center rounded-[38%] ${TONE_BLOB.sky}`} aria-hidden>

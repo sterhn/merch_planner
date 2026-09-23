@@ -23,7 +23,7 @@ export default function StatTile({
 }) {
   return (
     <div
-      className="flex animate-pop items-center gap-3 rounded-card bg-surface p-3.5 shadow-card"
+      className="flex animate-pop items-center gap-3 rounded-card glass p-3.5"
       style={{ animationDelay: `${(index + 1) * 60}ms` }}
     >
       {Icon && (
