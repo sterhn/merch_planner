@@ -198,7 +198,8 @@
   --glass-sheen: light-dark(oklch(1 0 0 / 55%), oklch(1 0 0 / 5%));
   /* Candy-gloss top edge on filled brand surfaces (buttons, the hero card) */
   --glass-gloss: light-dark(oklch(1 0 0 / 35%), oklch(1 0 0 / 30%));
-  /* Average colour of each holo foil (Backdrop.tsx) */
+  /* Average colour of each holo foil (Backdrop.tsx). index.html's theme-color
+     and the web manifest carry it as hex (#aebaf2 / #0c0d20) — keep in step. */
   --holo-base: light-dark(oklch(0.8 0.08 275), oklch(0.17 0.04 280));
 }
 
