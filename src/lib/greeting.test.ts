@@ -26,4 +26,8 @@ describe('dueLabel', () => {
     expect(dueLabel(1)).toBe('tomorrow')
     expect(dueLabel(6)).toBe('in 6 days')
   })
+  it('says how far past the deadline an overdue one is', () => {
+    expect(dueLabel(-1)).toBe('1 day overdue')
+    expect(dueLabel(-4)).toBe('4 days overdue')
+  })
 })

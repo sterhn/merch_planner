@@ -205,12 +205,16 @@ export default function Dashboard() {
     }
   }, [orders, shelf, expenses, period])
 
-  const upcoming = useMemo(() => {
+  // A collect's deadline is when it has to be paid — the Collects page flags an
+  // unpaid one past it as overdue. So paid collects drop off here (they used to
+  // show as urgent anyway), and overdue ones stay: sorted first, since those
+  // are the most urgent of all rather than the ones to hide.
+  const deadlines = useMemo(() => {
     const today = todayISO()
     const soon = daysFromTodayISO(7)
     return (collects ?? [])
-      // A collect that already arrived has nothing left to be due.
-      .filter((c) => !c.received_at && c.deadline != null && c.deadline >= today)
+      // A collect that already arrived has nothing left to be due either.
+      .filter((c) => !c.paid && !c.received_at && c.deadline != null)
       .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))
       .slice(0, 3)
       .map((c) => ({ ...c, urgent: c.deadline! <= soon, days: daysBetween(today, c.deadline!) }))
@@ -408,14 +412,14 @@ export default function Dashboard() {
       </div>
 
       <section>
-        <h2 className="mb-2 font-display text-base">Upcoming deadlines</h2>
-        {upcoming.length === 0 ? (
+        <h2 className="mb-2 font-display text-base">Collect deadlines</h2>
+        {deadlines.length === 0 ? (
           <Card className="animate-pop">
-            <EmptyState icon={PartyPopper} tone="sun" message="All caught up!" hint="No collect deadlines coming up." />
+            <EmptyState icon={PartyPopper} tone="sun" message="All caught up!" hint="No unpaid collects with a deadline." />
           </Card>
         ) : (
           <div className="space-y-2">
-            {upcoming.map((c) => (
+            {deadlines.map((c) => (
               <Link
                 key={c.id}
                 to="/collects"
@@ -436,7 +440,7 @@ export default function Dashboard() {
                       c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/40 text-ink'
                     }`}
                   >
-                    <CalendarClock size={13} />
+                    {c.days < 0 ? <AlertTriangle size={13} /> : <CalendarClock size={13} />}
                     {dueLabel(c.days)}
                   </span>
                   <span className="text-2xs text-ink-faint">{formatDate(c.deadline)}</span>

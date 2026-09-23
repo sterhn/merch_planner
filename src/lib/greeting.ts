@@ -29,9 +29,10 @@ export function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((Date.parse(toISO) - Date.parse(fromISO)) / 86_400_000)
 }
 
-/** "today" / "tomorrow" / "in 5 days" */
+/** "3 days overdue" / "today" / "tomorrow" / "in 5 days" */
 export function dueLabel(days: number): string {
-  if (days <= 0) return 'today'
+  if (days < 0) return days === -1 ? '1 day overdue' : `${-days} days overdue`
+  if (days === 0) return 'today'
   if (days === 1) return 'tomorrow'
   return `in ${days} days`
 }
