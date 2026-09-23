@@ -1,6 +1,6 @@
 # Merch Planner
 
-A small web app for tracking a merch shop: **orders, catalog, collects (production runs), shelf (consignment), and expenses**. Works on phone and laptop — same data everywhere.
+A small web app for tracking a merch shop: **orders, catalog, collects (production runs), and expenses**. Works on phone and laptop — same data everywhere.
 
 - Frontend: React + Vite, hosted free on **GitHub Pages**
 - Data + login: **Supabase** (free tier)
@@ -72,12 +72,13 @@ Open **https://sterhn.github.io/merch_planner/** in the browser, log in, then us
 
 | Section | What it's for |
 |---|---|
-| **Dashboard** | Revenue vs expenses, unpaid/unsent counts, upcoming collect deadlines |
+| **Dashboard** | Revenue vs expenses, unpaid/unsent counts, unpaid collect deadlines (overdue first) |
 | **Orders** | Pre-orders: contact, items, total, paid → sent → delivered, delivery method & address |
 | **Catalog** | All your merch with cost, price, auto-profit, and stock |
 | **Collects** | Production runs: qty, costs, deadline, paid; total & per-unit cost auto-computed |
-| **Shelf** | Consignment positions: sent / sold / remaining, income, "Log rent" button |
 | **Expenses** | Manual expense log + paid collects shown automatically ("from collects") |
+
+The consignment **Shelf** section is archived: its page is gone, but the `shelf_items` data stays and past shelf income still counts toward dashboard revenue (see CLAUDE.md to bring it back).
 
 Marking an order **sent** automatically decreases catalog stock for its items (and restores it if you un-mark sent). Items added to an order *after* it was already marked sent don't adjust stock.
 
@@ -89,7 +90,7 @@ The app is a PWA: after the first visit it loads instantly and shows your latest
 cp .env.example .env.local   # fill in your Supabase URL + anon key
 npm install
 npm run dev                  # local dev server
-npm test                     # parser unit tests
+npm test                     # unit tests
 npm run build                # production build
 ```
 

@@ -22,6 +22,25 @@ What works instead:
 4. Mock item photos as canvas-generated `data:` URLs — outbound network is proxied and
    there are no real Supabase storage URLs available.
 
+## Driving the logged-in app against a mock Supabase
+
+Whole pages (not just modules) can be driven with no credentials by pointing the dev
+server at a fake project and answering its API from Playwright:
+
+1. A gitignored `.env.local` with `VITE_SUPABASE_URL=https://mockproj.supabase.co` and
+   any anon key, then start the dev server.
+2. `context.addInitScript` to store a session under `localStorage['sb-mockproj-auth-token']`
+   (`access_token`, `refresh_token`, `token_type: 'bearer'`, a far-future `expires_at`,
+   `expires_in`, `user`) — supabase-js restores it without a network call.
+3. `context.route('https://mockproj.supabase.co/**', handler)` serving PostgREST from
+   in-memory rows: answer `OPTIONS` preflights with permissive CORS headers; for GET
+   honour `eq.` / `neq.` / `in.` / `ilike.` filters, `order`, `offset` / `limit`, return a
+   single object when `Accept` has `vnd.pgrst.object`, and embed
+   `order_items(… item:item_id(…))` for the Orders list; derive `expense_feed` from
+   expenses + paid collects. POST / PATCH / DELETE can mutate the rows so flows round-trip.
+4. Cap GET results at a max-rows (1000, like Supabase) and seed >1000 orders to exercise
+   `readAll`'s paging; make one table's reads return 500 to test failure paths.
+
 ## Run the gate on Node 20 before pushing
 
 CI pins `node-version: 20` (`.github/workflows/deploy.yml`); this box defaults to a
@@ -52,7 +71,7 @@ touching real data. Postgres 16 is on the box at `/usr/lib/postgresql/16/bin`.
 
 Useful things this answers: whether the migrations still apply cleanly from scratch,
 what a view really returns, and whether client-side logic matches Postgres semantics
-(`src/hooks/useTable.test.ts` locks in null ordering derived this way).
+(`src/lib/sortRows.test.ts` locks in null ordering derived this way).
 
 To generate types: `npx supabase gen types typescript --db-url ...` shells out to
 Docker, which is not running by default — start `dockerd` first, and point the URL at

@@ -19,7 +19,7 @@ Report how many commits behind the branch was. Never build on a stale base — a
 
 - React 19 + TypeScript + Vite 8, HashRouter (GitHub Pages), PWA via vite-plugin-pwa (offline caching; keep woff2 in `globPatterns`)
 - Tailwind CSS v4, CSS-first: design tokens live in an `@theme` block in `src/index.css`. Tokens use `light-dark()`, so dark mode follows the system automatically with no `dark:` variants.
-- Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`
+- Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`. PostgREST silently caps a read at 1000 rows: `useList` pages past it through `src/lib/readAll.ts`, and any other select that can grow unbounded should go through `readAll` too (the Orders bulk print does)
 - Icons: lucide-react (import icons individually). Fonts: Manrope Variable (body) + Nunito Variable (display, weight 820 via `--font-display--font-variation-settings`) — replacements must keep Cyrillic coverage.
 
 ### Tokens
@@ -59,5 +59,6 @@ Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each
 - Celebration: `src/lib/confetti.ts` `celebrate(el?)` for happy moments (order status advanced, collect received). `StatusBadge` fires it when switched on. Respects reduced motion.
 - Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there.
 - Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
-- Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. Whole-number counts stay `type="number" inputMode="numeric"`.
+- Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. `parseMoney` also takes space thousands separators and a trailing ₽, so pasted "1 500 ₽" reads as 1500. Whole-number counts stay `type="number" inputMode="numeric"`.
+- SKUs autofill from type + fandom via `src/lib/sku.ts` (`TYPE_ABBR`, `nextSku`: FANDOM-TYPE-NN, or FANDOM-NN for a type without a code) until the SKU is typed by hand.
 - Inputs use 16px text (`text-base`) so iOS doesn't zoom on focus
