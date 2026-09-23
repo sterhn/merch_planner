@@ -12,9 +12,17 @@ export function formatRub(value: number | null | undefined): string {
  * produces — `Number('1,5')` is NaN. Pair with `type="text" inputMode="decimal"`
  * inputs: a `type="number"` input rejects the comma before this ever runs.
  * Blank means "not set" (null), not zero.
+ *
+ * Also accepts space thousands separators — typed ("1 500"), or the no-break
+ * spaces formatRub prints, so an amount copied from the app or a bank app
+ * pastes back cleanly — and a trailing ₽ / р / руб. Without this "1 500"
+ * parsed as null: an expense saved as 0 ₽, a price or total silently cleared.
  */
 export function parseMoney(input: string): number | null {
-  const trimmed = input.trim().replace(',', '.')
+  const trimmed = input
+    .replace(/\s/g, '')
+    .replace(/(₽|руб\.?|р\.?)$/i, '')
+    .replace(',', '.')
   if (trimmed === '') return null
   const n = Number(trimmed)
   return Number.isFinite(n) ? n : null

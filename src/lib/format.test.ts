@@ -101,6 +101,21 @@ describe('parseMoney', () => {
     expect(parseMoney('abc')).toBeNull()
     expect(parseMoney('1,2,3')).toBeNull()
   })
+  it('accepts space thousands separators, including no-break spaces', () => {
+    expect(parseMoney('1 500')).toBe(1500)
+    expect(parseMoney('1 500')).toBe(1500)
+    expect(parseMoney('12 500,50')).toBe(12500.5)
+  })
+  it('reads back what formatRub prints', () => {
+    expect(parseMoney(formatRub(1250))).toBe(1250)
+    expect(parseMoney(formatRub(1234.5))).toBe(1234.5)
+  })
+  it('ignores a trailing ruble sign or abbreviation', () => {
+    expect(parseMoney('1500 ₽')).toBe(1500)
+    expect(parseMoney('1500р')).toBe(1500)
+    expect(parseMoney('1 500 руб.')).toBe(1500)
+    expect(parseMoney('₽')).toBeNull()
+  })
 })
 
 describe('parseCount', () => {
