@@ -21,13 +21,13 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>
 
 const STYLE = {
   primary:
-    'tap h-12 w-full rounded-full bg-linear-to-br from-brand to-brand-2 px-4 text-sm font-extrabold text-on-brand shadow-card hover:shadow-lift disabled:opacity-50 disabled:saturate-50',
+    'tap h-12 w-full rounded-full bg-linear-to-br from-brand to-brand-2 px-4 text-sm font-extrabold text-on-brand shadow-card inset-shadow-[0_1px_0_var(--glass-gloss)] hover:shadow-lift disabled:opacity-50 disabled:saturate-50',
   danger: 'tap h-12 w-full rounded-full px-4 text-sm font-bold text-bad hover:bg-bad/10 disabled:opacity-50',
   secondary:
     'tap flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-brand/40 px-4 text-sm font-bold text-brand hover:bg-brand/10 disabled:opacity-50',
   'secondary-good':
     'tap flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-good/50 px-4 text-sm font-bold text-good hover:bg-good/10 disabled:opacity-50',
-  add: 'group tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-linear-to-br from-brand to-brand-2 px-4 text-sm font-extrabold text-on-brand shadow-card hover:shadow-lift disabled:opacity-50',
+  add: 'group tap flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-linear-to-br from-brand to-brand-2 px-4 text-sm font-extrabold text-on-brand shadow-card inset-shadow-[0_1px_0_var(--glass-gloss)] hover:shadow-lift disabled:opacity-50',
 } as const
 
 /**

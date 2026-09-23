@@ -19,6 +19,7 @@ import SearchInput from '../components/SearchInput'
 import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
+import { showToast } from '../lib/toast'
 import { groupLinesByFandom, linesTotal, sortLinesByPrice } from '../lib/orderLines'
 import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, ORDER_LIST_CSS, printPageHtml, statusParts } from '../lib/printOrder'
 import {
@@ -40,6 +41,21 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'done', label: 'Done' },
 ]
 
+function matchesStatus(o: Order, filter: Filter): boolean {
+  switch (filter) {
+    case 'unpaid':
+      return !o.paid
+    case 'to_send':
+      return o.paid && !o.sent
+    case 'sent':
+      return o.paid && o.sent && !o.delivered
+    case 'done':
+      return o.delivered
+    case 'all':
+      return true
+  }
+}
+
 export default function Orders() {
   const { data: orders, isLoading, isError, refetch } = useList<OrderWithPhotos>('orders', {
     orderBy: 'created_at',
@@ -57,8 +73,7 @@ export default function Orders() {
   // Optimistic: flip the badge in every cached orders list immediately, and
   // fall back to a refetch if the save fails. Without this the swipe felt
   // laggy next to the same toggle on the order screen.
-  function advanceStatus(id: string, values: Partial<Order>) {
-    celebrate()
+  function setStatus(id: string, values: Partial<Order>) {
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
       Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...values } : o)) : data,
     )
@@ -66,6 +81,14 @@ export default function Orders() {
       { id, values },
       { onError: () => void qc.invalidateQueries({ queryKey: ['orders'] }) },
     )
+  }
+
+  // A swipe is easy to trigger by accident, and "sent" moves catalog stock, so
+  // every advance offers an Undo. Un-sending restores stock (DB trigger).
+  function advanceStatus(id: string, who: string, flag: 'paid' | 'sent' | 'delivered') {
+    celebrate()
+    setStatus(id, { [flag]: true })
+    showToast(`${who} marked ${flag}`, { label: 'Undo', onClick: () => setStatus(id, { [flag]: false }) })
   }
 
   // Search, filters and scroll come back from the last visit, so leaving an
@@ -126,7 +149,9 @@ export default function Orders() {
     return [...types].sort()
   }, [orders])
 
-  const filtered = useMemo(() => {
+  // Search and delivery narrow the pool; the status chips then split it, each
+  // chip showing how many it would leave.
+  const pool = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (orders ?? []).filter((o) => {
       if (q) {
@@ -137,14 +162,18 @@ export default function Orders() {
           .toLowerCase()
         if (!contact.includes(q) && !itemNames.includes(q)) return false
       }
-      if (filter === 'unpaid' && o.paid) return false
-      if (filter === 'to_send' && !(o.paid && !o.sent)) return false
-      if (filter === 'sent' && !(o.paid && o.sent && !o.delivered)) return false
-      if (filter === 'done' && !o.delivered) return false
       if (deliveryFilter && o.delivery_method !== deliveryFilter) return false
       return true
     })
-  }, [orders, search, filter, deliveryFilter])
+  }, [orders, search, deliveryFilter])
+
+  const counts = useMemo(() => {
+    const c = {} as Record<Filter, number>
+    for (const f of FILTERS) c[f.key] = pool.filter((o) => matchesStatus(o, f.key)).length
+    return c
+  }, [pool])
+
+  const filtered = useMemo(() => pool.filter((o) => matchesStatus(o, filter)), [pool, filter])
 
   // Resolved against the loaded list, so a deleted order stops offering a jump
   // back and the card always shows the order's current contact.
@@ -300,7 +329,7 @@ export default function Orders() {
 
       <div className="mb-3 flex gap-2 overflow-x-auto">
         {FILTERS.map((f) => (
-          <FilterChip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)}>
+          <FilterChip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)} count={counts[f.key]}>
             {f.label}
           </FilterChip>
         ))}
@@ -355,29 +384,29 @@ export default function Orders() {
           const photos = [...new Set(
             (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
           )].slice(0, 6)
+          const who = o.telegram || o.customer_email || 'no contact'
           const advance: SwipeAction | undefined = !o.paid
             ? {
                 icon: BadgeCheck,
                 label: 'paid',
                 tone: 'good',
-                onAction: () => advanceStatus(o.id, { paid: true }),
+                onAction: () => advanceStatus(o.id, who, 'paid'),
               }
             : !o.sent
               ? {
                   icon: Send,
                   label: 'sent',
                   tone: 'accent',
-                  onAction: () => advanceStatus(o.id, { sent: true }),
+                  onAction: () => advanceStatus(o.id, who, 'sent'),
                 }
               : !o.delivered
                 ? {
                     icon: PackageCheck,
                     label: 'delivered',
                     tone: 'brand',
-                    onAction: () => advanceStatus(o.id, { delivered: true }),
+                    onAction: () => advanceStatus(o.id, who, 'delivered'),
                   }
                 : undefined
-          const who = o.telegram || o.customer_email || 'no contact'
           const onDelete = () => {
             confirm('Delete this order?', () => remove.mutate(o.id))
           }
@@ -388,7 +417,7 @@ export default function Orders() {
               left={{ icon: Trash2, label: 'delete', tone: 'bad', onAction: onDelete }}
               right={advance}
             >
-              <div className="flex items-center rounded-card bg-surface shadow-card">
+              <div className="flex items-center rounded-card glass">
                 <Link
                   to={`/orders/${o.id}`}
                   className="tap flex min-w-0 flex-1 items-center justify-between gap-3 p-3.5"

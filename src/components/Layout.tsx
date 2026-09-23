@@ -31,7 +31,7 @@ export default function Layout() {
   return (
     <div className="min-h-dvh md:flex">
       {/* Sidebar on desktop */}
-      <aside className="hidden md:sticky md:top-0 md:flex md:h-dvh md:w-60 md:flex-col md:border-r md:border-line md:bg-surface/80 md:backdrop-blur-lg">
+      <aside className="hidden md:sticky md:top-3 md:m-3 md:flex md:h-[calc(100dvh-1.5rem)] md:w-60 md:shrink-0 md:flex-col md:rounded-sheet md:glass">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <BrandMark />
           <div className="leading-tight">
@@ -78,13 +78,14 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
-        <main key={section} className="mx-auto w-full max-w-4xl flex-1 animate-page-in px-4 pb-28 pt-5 md:px-6 md:pb-10 md:pt-8">
+        <main key={section} className="mx-auto w-full max-w-4xl flex-1 animate-page-in px-4 pb-[calc(var(--spacing-nav)+env(safe-area-inset-bottom)+2rem)] pt-5 md:px-6 md:pb-10 md:pt-8">
           <Outlet />
         </main>
       </div>
 
-      {/* Bottom tab bar on mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex rounded-t-sheet border-t border-line bg-surface/90 px-1 pb-[env(safe-area-inset-bottom)] shadow-nav backdrop-blur-lg md:hidden">
+      {/* Floating glass tab bar on mobile. Sits --spacing-nav tall, lifted 0.5rem
+          above the safe area — the Toast offsets by the same sum. */}
+      <nav className="glass fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] z-20 flex rounded-sheet px-1 [--glass-fill:72%] md:hidden">
         {NAV.map((n) => (
           <NavLink
             key={n.to}

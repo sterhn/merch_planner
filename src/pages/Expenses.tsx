@@ -39,6 +39,10 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   collect: Printer,
 }
 
+// The shelf is archived: its rent stays readable on old rows, but isn't
+// offered for new ones.
+const NEW_CATEGORIES = EXPENSE_CATEGORIES.filter((c) => c !== 'shelf_rent')
+
 export default function Expenses() {
   const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
@@ -88,7 +92,14 @@ export default function Expenses() {
         description: form.description || null,
         amount: parseMoney(form.amount) ?? 0,
       },
-      { onSuccess: () => setAdding(false) },
+      {
+        onSuccess: () => {
+          setAdding(false)
+          // Keep date and category — expenses tend to be logged in batches
+          // (a receipt at a time) — but never reopen on the last amount.
+          setForm((f) => ({ ...f, description: '', amount: '' }))
+        },
+      },
     )
   }
 
@@ -125,7 +136,7 @@ export default function Expenses() {
             {rows.map((row) => {
               const CategoryIcon = CATEGORY_ICONS[row.category] ?? MoreHorizontal
               const content = (
-                <div className="flex items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
+                <div className="flex items-center gap-3 rounded-card glass p-3.5">
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-[38%] bg-peach/15 text-peach">
                     <CategoryIcon size={16} />
                   </span>
@@ -187,7 +198,7 @@ export default function Expenses() {
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value as Expense['category'] })}
             >
-              {EXPENSE_CATEGORIES.map((c) => (
+              {NEW_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
                   {CATEGORY_LABELS[c]}
                 </option>

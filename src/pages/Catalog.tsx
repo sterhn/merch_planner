@@ -388,7 +388,7 @@ export default function Catalog() {
           const parts = bundleMap.get(item.id) ?? []
           const stockShown = canMake ?? item.stock_qty ?? 0
           return (
-            <div key={item.id} className="flex w-full items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
+            <div key={item.id} className="flex w-full items-center gap-3 rounded-card glass p-3.5">
               <button
                 type="button"
                 onClick={() => {

@@ -294,8 +294,8 @@ export default function Collects() {
                 haptic()
                 openEditor(c)
               }}
-              className={`tap flex w-full items-center justify-between gap-3 rounded-card bg-surface p-3.5 text-left shadow-card hover:bg-brand/10 ${
-                overdue ? 'ring-2 ring-bad/50' : ''
+              className={`lift flex w-full items-center justify-between gap-3 rounded-card glass p-3.5 text-left ${
+                overdue ? 'glass-alert' : ''
               }`}
             >
               <div className="min-w-0">
