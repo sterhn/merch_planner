@@ -198,6 +198,8 @@
   --glass-sheen: light-dark(oklch(1 0 0 / 55%), oklch(1 0 0 / 5%));
   /* Candy-gloss top edge on filled brand surfaces (buttons, the hero card) */
   --glass-gloss: light-dark(oklch(1 0 0 / 35%), oklch(1 0 0 / 30%));
+  /* Average colour of each holo foil (Backdrop.tsx) */
+  --holo-base: light-dark(oklch(0.8 0.08 275), oklch(0.17 0.04 280));
 }
 
 html {
@@ -212,7 +214,11 @@ html {
 }
 
 body {
-  @apply bg-page font-sans text-ink antialiased;
+  @apply font-sans text-ink antialiased;
+  /* The foil's average colour, not bg-page: wherever the page shows past the
+     foil (overscroll bounce, a resize mid-gesture) it blends in instead of
+     flashing a white strip. */
+  background-color: var(--holo-base);
   /* The holographic foil lives on a fixed layer (Backdrop.tsx). */
 }
 
