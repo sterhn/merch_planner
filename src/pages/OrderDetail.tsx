@@ -51,6 +51,15 @@ function HeaderForm({
     comment: order.comment ?? '',
   })
 
+  // "use items total" rewrites the total from outside the form. Take the new
+  // value into that one field; the form used to remount for it instead, which
+  // threw away anything typed into the other fields and not yet saved.
+  const [syncedTotal, setSyncedTotal] = useState(order.total_price)
+  if (order.total_price !== syncedTotal) {
+    setSyncedTotal(order.total_price)
+    setForm((f) => ({ ...f, total_price: order.total_price?.toString() ?? '' }))
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault()
     onSave({
@@ -561,7 +570,7 @@ export default function OrderDetail() {
 
       <div className="print:hidden">
         <HeaderForm
-          key={`${order.id}-${order.total_price}`}
+          key={order.id}
           order={order}
           pending={updateOrder.isPending}
           onSave={(values) => updateOrder.mutate({ id: id!, values })}
