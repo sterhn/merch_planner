@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { readAll } from '../lib/readAll'
 import { sortRows } from '../lib/sortRows'
 
 interface ListOptions {
@@ -29,11 +30,13 @@ export function useList<T>(table: string, opts: ListOptions = {}) {
 
   return useQuery({
     queryKey: [table, select],
-    queryFn: async (): Promise<T[]> => {
-      const { data, error } = await supabase.from(table).select(select)
-      if (error) throw error
-      return data as T[]
-    },
+    // Paged past PostgREST's 1000-row cap; every table (and expense_feed) has
+    // a unique `id` to hold the page order steady.
+    queryFn: () =>
+      readAll<T>(
+        (from, to) => supabase.from(table).select(select).range(from, to),
+        (from, to) => supabase.from(table).select(select).order('id').range(from, to),
+      ),
     select: sort,
   })
 }
