@@ -13,7 +13,7 @@ import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, printPageHtml, RECEIPT_CSS, receiptBodyHtml, SINGLE_ORDER_CSS, statusParts } from '../lib/printOrder'
+import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, POPUP_BLOCKED, printPageHtml, RECEIPT_CSS, receiptBodyHtml, SINGLE_ORDER_CSS, statusParts } from '../lib/printOrder'
 import { fandomGrouping, rememberOrder, setFandomGrouping } from '../lib/viewState'
 import StatusBadge from '../components/StatusBadge'
 import { useConfirm } from '../hooks/useConfirm'
@@ -372,7 +372,7 @@ export default function OrderDetail() {
   ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}`,
     )
 
-    openPrintWindow(html)
+    if (!openPrintWindow(html)) showToast(POPUP_BLOCKED)
   }
 
   function printReceipt() {
@@ -381,7 +381,7 @@ export default function OrderDetail() {
       RECEIPT_CSS,
       receiptBodyHtml(order!, orderedLines, itemNames),
     )
-    openPrintWindow(html)
+    if (!openPrintWindow(html)) showToast(POPUP_BLOCKED)
   }
 
   function renderLine(l: OrderItem) {

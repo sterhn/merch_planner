@@ -20,8 +20,19 @@ import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
+import { failureMessage } from '../lib/errorMessage'
 import { groupLinesByFandom, linesTotal, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, ORDER_LIST_CSS, printPageHtml, statusParts } from '../lib/printOrder'
+import {
+  esc,
+  ITEM_TABLE_HEAD,
+  itemRowsHtml,
+  ORDER_LIST_CSS,
+  POPUP_BLOCKED,
+  printInWindow,
+  printPageHtml,
+  statusParts,
+} from '../lib/printOrder'
+import { readAll } from '../lib/readAll'
 import {
   fandomGrouping,
   flushViewState,
@@ -32,6 +43,9 @@ import {
 } from '../lib/viewState'
 
 type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
+
+/** Order ids per order_items request when printing the list (they go in the URL). */
+const PRINT_ID_CHUNK = 100
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'to_send', label: 'To send' },
@@ -184,30 +198,53 @@ export default function Orders() {
 
   async function printOrders() {
     if (filtered.length === 0) return
+    // Open the tab while the tap still counts as a user gesture: opened after
+    // the fetch below, popup blockers (Safari's especially) swallow it.
+    const win = window.open('', '_blank')
+    if (!win) {
+      showToast(POPUP_BLOCKED)
+      return
+    }
+    win.document.write('<p style="font:14px sans-serif;color:#666;padding:24px">Preparing the printout…</p>')
     setPrintLoading(true)
 
     try {
       const orderIds = filtered.map((o) => o.id)
+      // The ids travel in the URL, so a long list goes in chunks — a few hundred
+      // UUIDs in one request would overrun the request-line limit.
+      const idChunks: string[][] = []
+      for (let i = 0; i < orderIds.length; i += PRINT_ID_CHUNK) idChunks.push(orderIds.slice(i, i + PRINT_ID_CHUNK))
 
-      const [{ data: allItems }, { data: catalog }] = await Promise.all([
-        supabase
-          .from('order_items')
-          .select('*')
-          .in('order_id', orderIds)
-          .order('position', { ascending: true, nullsFirst: false })
-          .order('created_at'),
-        supabase.from('items').select('id, name, fandom'),
+      const [lineChunks, catalog] = await Promise.all([
+        Promise.all(
+          idChunks.map((ids) =>
+            readAll<OrderItem>((from, to) =>
+              supabase
+                .from('order_items')
+                .select('*')
+                .in('order_id', ids)
+                .order('position', { ascending: true, nullsFirst: false })
+                .order('created_at')
+                .order('id')
+                .range(from, to),
+            ),
+          ),
+        ),
+        readAll<{ id: string; name: string; fandom: string | null }>((from, to) =>
+          supabase.from('items').select('id, name, fandom').order('id').range(from, to),
+        ),
       ])
+      const allItems = lineChunks.flat()
 
       const catalogMap = new Map<string, { name: string; fandom: string | null }>()
-      for (const item of catalog ?? []) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
+      for (const item of catalog) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
 
       // Printouts follow the grouping toggle set on the order screen.
       const groupByFandom = fandomGrouping()
       const printedOn = formatDate(todayISO())
 
       const itemsByOrder = new Map<string, OrderItem[]>()
-      for (const item of (allItems ?? []) as OrderItem[]) {
+      for (const item of allItems) {
         if (!itemsByOrder.has(item.order_id)) itemsByOrder.set(item.order_id, [])
         itemsByOrder.get(item.order_id)!.push(item)
       }
@@ -260,7 +297,12 @@ export default function Orders() {
   ${ordersHtml}`,
       )
 
-      openPrintWindow(html)
+      if (!win.closed) printInWindow(win, html)
+    } catch (err) {
+      // A failed read must not print: every order would come out as "No items
+      // added", a packing list that looks right and isn't.
+      win.close()
+      showToast(failureMessage('Print', err))
     } finally {
       setPrintLoading(false)
     }

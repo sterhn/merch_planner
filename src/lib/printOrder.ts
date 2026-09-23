@@ -246,12 +246,25 @@ export function receiptBodyHtml(
 </div>`
 }
 
-/** Opens the document in a new tab and triggers the browser's print dialog. */
-export function openPrintWindow(html: string): void {
-  const win = window.open('', '_blank')
-  if (!win) return
+/** Shown when a popup blocker stops the print tab from opening. */
+export const POPUP_BLOCKED = 'Allow pop-ups for this site to print.'
+
+/** Writes the document into an already-open tab and triggers the print dialog. */
+export function printInWindow(win: Window, html: string): void {
+  win.document.open()
   win.document.write(html)
   win.document.close()
   win.focus()
   win.print()
+}
+
+/**
+ * Opens the document in a new tab and triggers the browser's print dialog.
+ * False when a popup blocker kept the tab from opening.
+ */
+export function openPrintWindow(html: string): boolean {
+  const win = window.open('', '_blank')
+  if (!win) return false
+  printInWindow(win, html)
+  return true
 }
