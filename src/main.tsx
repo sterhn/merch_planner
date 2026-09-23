@@ -5,6 +5,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App'
+import Backdrop from './components/Backdrop'
 import { showToast } from './lib/toast'
 
 registerSW()
@@ -36,6 +37,7 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <Backdrop />
       <HashRouter>
         <App />
       </HashRouter>

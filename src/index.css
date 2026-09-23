@@ -166,7 +166,7 @@
 
 /* Liquid glass: a translucent pane that blurs and saturates whatever sits
    behind it, with a bright rim along the top edge and a faint diagonal sheen.
-   `--glass-fill` sets how much solid surface shows through; sheets that hold
+   `--glass-fill` sets how much solid surface shows through (default 64%);
    the utility reads it with a fallback so `[--glass-fill:80%]` can override.
    backdrop-filter makes the element a containing block for fixed-position
    descendants, same as a transform — never put `glass` on an ancestor of Modal. */
@@ -199,6 +199,18 @@
   /* Candy-gloss top edge on filled brand surfaces (buttons, the hero card) */
   --glass-gloss: light-dark(oklch(1 0 0 / 35%), oklch(1 0 0 / 30%));
 
+  /* Colour blocks behind the glass (Backdrop.tsx). Deeper and dimmer in dark
+     mode, where the light-mode pastels would glow. */
+  --block-brand: light-dark(oklch(0.78 0.12 295 / 60%), oklch(0.45 0.14 295 / 55%));
+  --block-pink: light-dark(oklch(0.8 0.12 340 / 55%), oklch(0.45 0.14 340 / 50%));
+  --block-sun: light-dark(oklch(0.9 0.12 90 / 60%), oklch(0.5 0.1 85 / 40%));
+  --block-sky: light-dark(oklch(0.8 0.1 235 / 55%), oklch(0.45 0.12 235 / 50%));
+  --block-peach: light-dark(oklch(0.83 0.1 50 / 55%), oklch(0.5 0.12 45 / 45%));
+  --block-mint: light-dark(oklch(0.85 0.1 160 / 50%), oklch(0.5 0.1 160 / 40%));
+
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1.4 -0.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --noise-strength: 0.55;
+
   /* Graph paper: a fine grid with a heavier line every fifth square */
   --grid-minor: light-dark(oklch(0.52 0.1 295 / 9%), oklch(0.8 0.08 295 / 6%));
   --grid-major: light-dark(oklch(0.52 0.1 295 / 17%), oklch(0.8 0.08 295 / 11%));
@@ -218,28 +230,38 @@ html {
 
 body {
   @apply bg-page font-sans text-ink antialiased;
-  /* Graph paper over a soft wash of section colours — the wash is what the
-     glass panes pick up and blur. Fixed so neither crawls while scrolling. */
+  /* The grid, colour blocks and grain live on a fixed layer (Backdrop.tsx). */
+}
+
+.backdrop-grid {
   background-image:
     linear-gradient(to right, var(--grid-major) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid-major) 1px, transparent 1px),
     linear-gradient(to right, var(--grid-minor) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-minor) 1px, transparent 1px),
-    radial-gradient(38rem 30rem at 0% 0%, color-mix(in oklch, var(--color-brand) 16%, transparent), transparent 70%),
-    radial-gradient(34rem 28rem at 100% 18%, color-mix(in oklch, var(--color-brand-2) 13%, transparent), transparent 70%),
-    radial-gradient(36rem 30rem at 12% 100%, color-mix(in oklch, var(--color-sky) 13%, transparent), transparent 70%),
-    radial-gradient(30rem 26rem at 95% 95%, color-mix(in oklch, var(--color-peach) 11%, transparent), transparent 70%);
+    linear-gradient(to bottom, var(--grid-minor) 1px, transparent 1px);
   background-size:
     calc(var(--grid-step) * 5) calc(var(--grid-step) * 5),
     calc(var(--grid-step) * 5) calc(var(--grid-step) * 5),
     var(--grid-step) var(--grid-step),
-    var(--grid-step) var(--grid-step),
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    100% 100%;
+    var(--grid-step) var(--grid-step);
   background-position: -1px -1px;
-  background-attachment: fixed;
+}
+
+/* Film grain. An inline SVG turbulence tile, blended so it darkens and
+   lightens the colour under it instead of greying it out. */
+.backdrop-noise {
+  background-image: var(--noise);
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+  opacity: var(--noise-strength);
+}
+
+/* Opacity isn't a colour, so light-dark() can't carry it — the grain is
+   halved by hand in dark mode, where soft-light speckle reads as grey static. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --noise-strength: 0.28;
+  }
 }
 
 ::selection {
