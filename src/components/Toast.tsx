@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Sparkles } from 'lucide-react'
 import { subscribeToasts, type ToastMessage } from '../lib/toast'
 
 export default function Toast() {
@@ -13,8 +14,9 @@ export default function Toast() {
       {items.map((m) => (
         <div
           key={m.id}
-          className="pointer-events-auto max-w-sm animate-pop rounded-full bg-ink/90 px-5 py-3 text-sm font-semibold text-page shadow-card backdrop-blur-sm"
+          className="pointer-events-auto flex max-w-sm animate-pop items-center gap-2 rounded-full bg-ink/90 py-3 pl-4 pr-5 text-sm font-semibold text-page shadow-lift backdrop-blur-sm"
         >
+          <Sparkles size={16} className="shrink-0 text-sun" aria-hidden />
           {m.text}
         </div>
       ))}

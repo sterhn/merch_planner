@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { Settings, Loader2 } from 'lucide-react'
+import { Settings } from 'lucide-react'
+import BrandMark from './components/BrandMark'
+import LoadingDots from './components/LoadingDots'
 import { useAuth } from './hooks/useAuth'
 import { supabaseConfigured } from './lib/supabase'
 import Layout from './components/Layout'
@@ -31,8 +33,11 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-ink-faint">
-        <Loader2 size={28} className="animate-spin" />
+      <div className="flex min-h-dvh flex-col items-center justify-center">
+        <span className="animate-float">
+          <BrandMark size={56} />
+        </span>
+        <LoadingDots label="Opening your shop…" />
       </div>
     )
   }

@@ -15,6 +15,8 @@ import FilterChip from '../components/FilterChip'
 import { AddRowButton, PickRowButton } from '../components/RowEditor'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SECTIONS } from '../components/sections'
+import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
 import {
   AddButton,
@@ -132,7 +134,8 @@ export default function Catalog() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [fandomFilter, setFandomFilter] = useState<string | null>(null)
-  const [editing, setEditing] = useState<Item | 'new' | null>(null)
+  const launchNew = useLaunchFlag()
+  const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
   const [viewing, setViewing] = useState<Item | null>(null)
   // Index of the bundle row whose component picker modal is open
   const [pickerFor, setPickerFor] = useState<number | null>(null)
@@ -345,7 +348,7 @@ export default function Catalog() {
 
   return (
     <div>
-      <PageHeader title="Catalog">
+      <PageHeader title="Catalog" icon={SECTIONS.catalog.icon} tone={SECTIONS.catalog.tone}>
         <AddButton onClick={() => openEditor('new')}>Add item</AddButton>
       </PageHeader>
       <SearchInput className="mb-3" label="Search catalog" value={search} onChange={setSearch} />
@@ -373,6 +376,7 @@ export default function Catalog() {
         isError={isError}
         isEmpty={filtered.length === 0}
         icon={Tags}
+        tone={SECTIONS.catalog.tone}
         errorMessage="Failed to load catalog."
         emptyMessage="No items yet."
         onRetry={() => void refetch()}

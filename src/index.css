@@ -1,11 +1,14 @@
 @import "tailwindcss";
 @import "@fontsource-variable/manrope";
-@import "@fontsource-variable/lora";
+@import "@fontsource-variable/nunito";
 
 @theme {
-  /* Typography — calm serif display over a quiet humanist sans */
+  /* Typography — a round, friendly display face over a clean humanist sans.
+     Both carry Cyrillic. The display weight rides on the variation axis so
+     every `font-display` heading comes out chunky without a font-bold. */
   --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Lora Variable", Georgia, "Times New Roman", serif;
+  --font-display: "Nunito Variable", "Manrope Variable", ui-rounded, system-ui, sans-serif;
+  --font-display--font-variation-settings: "wght" 820;
 
   /* Two steps below Tailwind's text-xs, for badge and caption text */
   --text-2xs: 0.6875rem;
@@ -13,13 +16,20 @@
   --text-3xs: 0.625rem;
   --text-3xs--line-height: 0.875rem;
 
-  /* Brand — muted pastel violet, no gradients */
-  --color-brand: light-dark(oklch(0.52 0.11 295), oklch(0.78 0.08 295));
-  --color-brand-strong: light-dark(oklch(0.42 0.09 295), oklch(0.36 0.07 295));
+  /* Brand — candy lavender. `brand-2` is its pinker twin at the same lightness,
+     so a brand → brand-2 gradient keeps `text-on-brand` legible end to end. */
+  --color-brand: light-dark(oklch(0.52 0.14 295), oklch(0.8 0.1 295));
+  --color-brand-2: light-dark(oklch(0.52 0.15 325), oklch(0.8 0.1 330));
+  --color-brand-strong: light-dark(oklch(0.42 0.12 295), oklch(0.36 0.08 295));
+  --color-brand-strong-2: light-dark(oklch(0.43 0.13 335), oklch(0.36 0.08 335));
   /* Light value is 0.54, not 0.58: an active accent chip is 12px bold, which is
      below WCAG's large-text threshold, so it needs the full 4.5:1. */
   --color-accent: light-dark(oklch(0.54 0.08 330), oklch(0.75 0.07 330));
   --color-sun: light-dark(oklch(0.87 0.08 85), oklch(0.42 0.06 85));
+  /* Extra pastel hues so each section of the app has its own colour. Used as
+     icon ink and at /15 for the tinted blob behind it — never as a text fill. */
+  --color-sky: light-dark(oklch(0.55 0.11 235), oklch(0.8 0.08 235));
+  --color-peach: light-dark(oklch(0.6 0.13 45), oklch(0.8 0.09 50));
 
   /* Foregrounds for filled surfaces. The brand/accent/good/bad fills invert with
      the theme — light in dark mode — so white-on-fill drops to ~1.8:1 there.
@@ -34,25 +44,28 @@
   --color-scrim: light-dark(oklch(0 0 0 / 40%), oklch(0 0 0 / 60%));
   --color-focus: light-dark(oklch(0.52 0.11 295), oklch(0.78 0.08 295));
 
-  /* Semantic surfaces & ink — warm paper neutrals, flip with the system theme */
-  --color-page: light-dark(oklch(0.972 0.007 85), oklch(0.185 0.008 80));
-  --color-surface: light-dark(oklch(0.993 0.003 85), oklch(0.23 0.01 80));
-  --color-surface-2: light-dark(oklch(0.945 0.008 85), oklch(0.28 0.012 80));
-  --color-ink: light-dark(oklch(0.28 0.02 75), oklch(0.94 0.008 85));
-  --color-ink-muted: light-dark(oklch(0.5 0.015 75), oklch(0.72 0.012 85));
-  --color-ink-faint: light-dark(oklch(0.66 0.012 75), oklch(0.56 0.012 85));
-  --color-line: light-dark(oklch(0.91 0.008 85), oklch(0.32 0.012 80));
+  /* Semantic surfaces & ink — soft lilac-tinted paper, flip with the system theme */
+  --color-page: light-dark(oklch(0.97 0.012 310), oklch(0.19 0.014 300));
+  --color-surface: light-dark(oklch(0.995 0.003 310), oklch(0.235 0.016 300));
+  --color-surface-2: light-dark(oklch(0.95 0.013 310), oklch(0.285 0.018 300));
+  --color-ink: light-dark(oklch(0.28 0.03 300), oklch(0.95 0.008 310));
+  --color-ink-muted: light-dark(oklch(0.49 0.025 300), oklch(0.74 0.014 310));
+  --color-ink-faint: light-dark(oklch(0.64 0.02 300), oklch(0.58 0.016 310));
+  --color-line: light-dark(oklch(0.915 0.014 310), oklch(0.33 0.018 300));
   --color-good: light-dark(oklch(0.54 0.11 155), oklch(0.76 0.11 160));
   --color-bad: light-dark(oklch(0.55 0.14 30), oklch(0.72 0.13 30));
 
   /* Radius */
-  --radius-control: 0.875rem;
-  --radius-card: 1.25rem;
-  --radius-sheet: 1.75rem;
+  --radius-control: 1rem;
+  --radius-card: 1.5rem;
+  --radius-sheet: 2rem;
 
-  /* Elevation — barely-there, paper-like */
-  --shadow-card: 0 1px 2px oklch(0.35 0.02 80 / 5%), 0 4px 14px -6px oklch(0.35 0.02 80 / 8%);
-  --shadow-nav: 0 -4px 20px -8px light-dark(oklch(0.35 0.02 80 / 15%), oklch(0 0 0 / 45%));
+  /* Elevation — soft, lilac-tinted, a little puffy */
+  --shadow-card: 0 1px 2px light-dark(oklch(0.4 0.08 300 / 6%), oklch(0 0 0 / 25%)),
+    0 6px 18px -8px light-dark(oklch(0.4 0.1 300 / 14%), oklch(0 0 0 / 40%));
+  --shadow-lift: 0 2px 4px light-dark(oklch(0.4 0.08 300 / 6%), oklch(0 0 0 / 25%)),
+    0 14px 28px -10px light-dark(oklch(0.4 0.12 300 / 22%), oklch(0 0 0 / 50%));
+  --shadow-nav: 0 -4px 24px -8px light-dark(oklch(0.4 0.1 300 / 18%), oklch(0 0 0 / 45%));
 
   /* Height of the mobile tab bar, excluding the safe-area inset. The Toast and the
      main content padding both clear the nav using this — keep them in step. */
@@ -64,6 +77,14 @@
   --animate-pop: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
   --animate-fade-in: fade-in 0.2s ease-out;
   --animate-fade-out: fade-out 0.2s ease-in forwards;
+  /* Opacity only: a transform on the page wrapper would become the containing
+     block for the fixed-position Modal rendered inside it. */
+  --animate-page-in: fade-in 0.28s ease-out;
+  --animate-float: float 4s ease-in-out infinite;
+  --animate-wiggle: wiggle 0.5s ease-in-out;
+  --animate-boing: boing 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+  --animate-twinkle: twinkle 2.4s ease-in-out infinite;
+  --animate-dot: dot 1s ease-in-out infinite;
 
   @keyframes sheet-up {
     from { transform: translateY(100%); }
@@ -80,12 +101,65 @@
   @keyframes fade-out {
     to { opacity: 0; }
   }
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-6px) rotate(2deg); }
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-10deg); }
+    50% { transform: rotate(8deg); }
+    75% { transform: rotate(-4deg); }
+  }
+  @keyframes boing {
+    0% { transform: scale(0.7); }
+    60% { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+  @keyframes twinkle {
+    0%, 100% { transform: scale(0.8) rotate(0); opacity: 0.5; }
+    50% { transform: scale(1.1) rotate(20deg); opacity: 1; }
+  }
+  @keyframes dot {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+    40% { transform: translateY(-7px); opacity: 1; }
+  }
+}
+
+/* Confetti bits spawned by src/lib/confetti.ts. Each carries its own flight
+   vector in --dx / --dy / --spin. */
+@keyframes confetti {
+  0% { transform: translate(-50%, -50%) scale(0.4) rotate(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1) rotate(var(--spin));
+    opacity: 0;
+  }
 }
 
 @utility tap {
-  transition: transform 150ms ease;
+  transition: transform 220ms cubic-bezier(0.3, 1.6, 0.5, 1);
   &:active {
-    transform: scale(0.96);
+    transform: scale(0.95);
+    transition-duration: 90ms;
+  }
+}
+
+/* Hover float for tappable cards — pointer devices only, so a phone never
+   leaves a card stuck in its raised state after a tap. */
+@utility lift {
+  transition:
+    transform 220ms cubic-bezier(0.3, 1.6, 0.5, 1),
+    box-shadow 220ms ease;
+  @media (hover: hover) {
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lift);
+    }
+  }
+  &:active {
+    transform: scale(0.97);
+    transition-duration: 90ms;
   }
 }
 
@@ -106,9 +180,23 @@ html {
 
 body {
   @apply bg-page font-sans text-ink antialiased;
+  /* A faint polka-dot paper. Fixed so it doesn't crawl while scrolling. */
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--color-brand) 13%, transparent) 1.2px,
+    transparent 1.2px
+  );
+  background-size: 22px 22px;
+  background-attachment: fixed;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--color-brand) 28%, transparent);
 }
 
 @media print {
+  body {
+    background-image: none;
+  }
   aside,
   nav.fixed {
     display: none !important;

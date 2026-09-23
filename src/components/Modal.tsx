@@ -118,7 +118,7 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line md:hidden" aria-hidden />
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-base font-semibold">{title}</h2>
+          <h2 className="font-display text-lg">{title}</h2>
           <button
             onClick={requestClose}
             className="tap flex size-10 items-center justify-center rounded-full bg-surface-2 text-ink-faint hover:text-ink"

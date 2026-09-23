@@ -12,6 +12,9 @@ import Modal from '../components/Modal'
 import OrderStatus from '../components/OrderStatus'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SECTIONS } from '../components/sections'
+import { useLaunchFlag } from '../hooks/useLaunchFlag'
+import { celebrate } from '../lib/confetti'
 import SearchInput from '../components/SearchInput'
 import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
@@ -55,6 +58,7 @@ export default function Orders() {
   // fall back to a refetch if the save fails. Without this the swipe felt
   // laggy next to the same toggle on the order screen.
   function advanceStatus(id: string, values: Partial<Order>) {
+    celebrate()
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
       Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...values } : o)) : data,
     )
@@ -81,7 +85,8 @@ export default function Orders() {
     setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
   }
   const [deliveryFilter, setDeliveryFilter] = useState(() => ordersView().delivery)
-  const [adding, setAdding] = useState(false)
+  const launchNew = useLaunchFlag()
+  const [adding, setAdding] = useState(launchNew)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
   const [printLoading, setPrintLoading] = useState(false)
   const [resumeId, setResumeId] = useState(() => lastOrder()?.id ?? null)
@@ -248,7 +253,7 @@ export default function Orders() {
 
   return (
     <div>
-      <PageHeader title="Orders">
+      <PageHeader title="Orders" icon={SECTIONS.orders.icon} tone={SECTIONS.orders.tone}>
         <IconButton
           icon={printLoading ? Loader2 : Printer}
           label="Print orders"
@@ -338,6 +343,7 @@ export default function Orders() {
         isError={isError}
         isEmpty={filtered.length === 0}
         icon={PackageOpen}
+        tone={SECTIONS.orders.tone}
         errorMessage="Failed to load orders."
         emptyMessage="No orders found."
         emptyHint="Swipe left to advance status, right to delete."

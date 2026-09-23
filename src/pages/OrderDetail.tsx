@@ -217,7 +217,7 @@ export default function OrderDetail() {
   if (orderMissing)
     return (
       <div>
-        <EmptyState icon={PackageSearch} message="Order not found" hint="It may have been deleted." />
+        <EmptyState icon={PackageSearch} tone="accent" message="Order not found" hint="It may have been deleted." />
         <div className="text-center">
           <button
             onClick={() => navigate('/orders')}

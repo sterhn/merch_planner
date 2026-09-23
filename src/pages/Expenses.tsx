@@ -18,6 +18,8 @@ import { useConfirm } from '../hooks/useConfirm'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SECTIONS } from '../components/sections'
+import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SwipeableRow from '../components/SwipeableRow'
 import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 
@@ -43,7 +45,8 @@ export default function Expenses() {
   const remove = useDelete('expenses', ['expense_feed'])
   const { confirm, element: confirmSheet } = useConfirm()
 
-  const [adding, setAdding] = useState(false)
+  const launchNew = useLaunchFlag()
+  const [adding, setAdding] = useState(launchNew)
   const [form, setForm] = useState({
     date: todayISO(),
     category: 'other' as Expense['category'],
@@ -95,7 +98,7 @@ export default function Expenses() {
 
   return (
     <div>
-      <PageHeader title="Expenses">
+      <PageHeader title="Expenses" icon={SECTIONS.expenses.icon} tone={SECTIONS.expenses.tone}>
         <AddButton onClick={() => setAdding(true)}>Add expense</AddButton>
       </PageHeader>
 
@@ -104,6 +107,7 @@ export default function Expenses() {
         isError={isError}
         isEmpty={(feed ?? []).length === 0}
         icon={Receipt}
+        tone={SECTIONS.expenses.tone}
         errorMessage="Failed to load expenses."
         emptyMessage="No expenses yet."
         onRetry={() => void refetch()}
@@ -114,7 +118,7 @@ export default function Expenses() {
       {byMonth.map(([month, { rows, total }]) => (
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="font-display text-sm text-ink-muted">{formatMonth(month)}</h2>
+            <h2 className="font-display text-base">{formatMonth(month)}</h2>
             <span className="font-display text-sm text-bad">−{formatRub(total)}</span>
           </div>
           <div className="space-y-2">
@@ -122,7 +126,7 @@ export default function Expenses() {
               const CategoryIcon = CATEGORY_ICONS[row.category] ?? MoreHorizontal
               const content = (
                 <div className="flex items-center gap-3 rounded-card bg-surface p-3.5 shadow-card">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[38%] bg-peach/15 text-peach">
                     <CategoryIcon size={16} />
                   </span>
                   <div className="min-w-0 flex-1">

@@ -20,16 +20,18 @@ Report how many commits behind the branch was. Never build on a stale base — a
 - React 19 + TypeScript + Vite 8, HashRouter (GitHub Pages), PWA via vite-plugin-pwa (offline caching; keep woff2 in `globPatterns`)
 - Tailwind CSS v4, CSS-first: design tokens live in an `@theme` block in `src/index.css`. Tokens use `light-dark()`, so dark mode follows the system automatically with no `dark:` variants.
 - Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`
-- Icons: lucide-react (import icons individually). Fonts: Manrope Variable (body) + Lora Variable (display) — replacements must keep Cyrillic coverage.
+- Icons: lucide-react (import icons individually). Fonts: Manrope Variable (body) + Nunito Variable (display, weight 820 via `--font-display--font-variation-settings`) — replacements must keep Cyrillic coverage.
 
 ### Tokens
 
 - Surfaces & ink: `bg-page`, `bg-surface`, `bg-surface-2`, `text-ink`, `text-ink-muted`, `text-ink-faint`, `border-line`
-- Colour: `bg-brand`, `bg-brand-strong`, `bg-accent`, `bg-sun`, `text-good`, `text-bad`
+- Colour: `bg-brand`, `bg-brand-strong`, `bg-accent`, `bg-sun`, `text-good`, `text-bad`. Gradient twins `brand-2` / `brand-strong-2` sit at the same lightness as `brand` / `brand-strong`, so `bg-linear-to-br from-brand to-brand-2` keeps `text-on-brand` legible.
+- Section pastels `sky`, `peach`: icon ink and `/15` tints only — too light for small text and no `on-*` pair.
+- Tones: `src/components/tones.ts` (`TONE_BLOB` tinted icon blob, `TONE_TEXT`). Each top-level page has an icon + tone in `src/components/sections.ts`, shared by the nav and `PageHeader` (`icon`/`tone` props).
 - **Foregrounds on filled surfaces: `text-on-brand`, `text-on-brand-strong`, `text-on-accent`, `text-on-good`, `text-on-bad`.** Never `text-white` on a `bg-brand`/`bg-accent`/`bg-good`/`bg-bad` fill — those fills become *light* in dark mode, and white on them lands near 1.8:1.
 - Type: `text-2xs` (11px) and `text-3xs` (10px) below Tailwind's `text-xs` — no arbitrary `text-[10px]`
-- Radius: `rounded-control`, `rounded-card`, `rounded-sheet`. Elevation: `shadow-card`, `shadow-nav`. Scrim: `bg-scrim`. Focus ring: `--color-focus` (applied globally, don't re-add per component)
-- Motion: `animate-sheet-up`, `animate-sheet-down`, `animate-pop`, `animate-fade-in`, `animate-fade-out`, and the `tap` press utility
+- Radius: `rounded-control`, `rounded-card`, `rounded-sheet`. Elevation: `shadow-card`, `shadow-lift` (hover), `shadow-nav`. Scrim: `bg-scrim`. Focus ring: `--color-focus` (applied globally, don't re-add per component)
+- Motion: `animate-sheet-up`, `animate-sheet-down`, `animate-pop`, `animate-fade-in`, `animate-fade-out`, `animate-page-in`, `animate-float`, `animate-wiggle`, `animate-boing`, `animate-twinkle`, `animate-dot`; the `tap` press utility and `lift` (hover-raise for tappable cards). Never put a transform animation on an ancestor of `Modal` — it isn't portalled, so a transformed ancestor becomes its containing block (why `animate-page-in` is opacity-only).
 - Never raw `gray-*`, `bg-white`, `text-red-*`, `text-green-*`.
 
 ## Commands
@@ -48,11 +50,13 @@ Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each
 - Shared components: `src/components/`
   - Page scaffolding: `PageHeader.tsx` (title + action slot), `QueryState.tsx` (the loading/error/empty triad — pass the query's flags, it renders nothing once there's data), `Card.tsx` (+ `SectionLabel`), `EmptyState.tsx`
   - Controls: `FormField.tsx` (`inputClass`, `textareaClass`, `Field`, `PrimaryButton`, `DangerButton`, `SecondaryButton`, `AddButton`, `IconButton`), `SearchInput.tsx`, `FilterChip.tsx`, `StatusBadge.tsx`, `RowEditor.tsx` (`PickRowButton`, `AddRowButton` for editable row lists)
-  - Display: `StatTile.tsx`, `OrderStatus.tsx`, `AnimatedNumber.tsx`, `ExpenseChart.tsx`, `CatalogPicker.tsx`
+  - Display: `StatTile.tsx` (optional `icon`), `OrderStatus.tsx`, `AnimatedNumber.tsx`, `ExpenseChart.tsx`, `CatalogPicker.tsx`, `BrandMark.tsx` (logo), `LoadingDots.tsx` (the loading indicator — `QueryState` and `EmptyState spin` use it)
   - Behaviour: `Modal.tsx` (animated bottom sheet; traps focus, stacks — topmost sheet owns Escape/Tab), `ConfirmSheet.tsx` (`useConfirm` — themed replacement for `window.confirm`; never use the native dialog), `SwipeableRow.tsx`, `Toast.tsx`
 - Reach for the shared component before hand-rolling markup — the page header, the loading/error/empty triad, stat tiles and icon buttons each existed in five or six copies before they were extracted.
 - `SwipeableRow` ignores mouse pointers, so any swipe-only action also needs a visible button fallback for desktop.
 - Haptics: `src/lib/haptics.ts` — call `haptic()` on key taps/toggles
+- Celebration: `src/lib/confetti.ts` `celebrate(el?)` for happy moments (order status advanced, collect received). `StatusBadge` fires it when switched on. Respects reduced motion.
+- Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there.
 - Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
 - Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. Whole-number counts stay `type="number" inputMode="numeric"`.
 - Inputs use 16px text (`text-base`) so iOS doesn't zoom on focus

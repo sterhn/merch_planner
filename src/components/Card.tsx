@@ -12,7 +12,7 @@ export default function Card({
   className = '',
   children,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & {
+}: Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> & {
   title?: ReactNode
   action?: ReactNode
 }) {

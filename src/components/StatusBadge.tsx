@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react'
 import { haptic } from '../lib/haptics'
+import { celebrate } from '../lib/confetti'
 
 export default function StatusBadge({
   on,
@@ -14,13 +15,15 @@ export default function StatusBadge({
   if (onClick) {
     return (
       <button
-        onClick={() => {
+        onClick={(e) => {
           haptic()
+          // Switching a status on is a small win — throw a little confetti.
+          if (!on) celebrate(e.currentTarget)
           onClick()
         }}
         className={`tap inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold ${cls}`}
       >
-        {on && <Check size={14} strokeWidth={3} />}
+        {on && <Check size={14} strokeWidth={3} className="animate-boing" />}
         {label}
       </button>
     )

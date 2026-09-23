@@ -13,6 +13,8 @@ import { useConfirm } from '../hooks/useConfirm'
 import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SECTIONS } from '../components/sections'
+import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import { AddRowButton, PickRowButton } from '../components/RowEditor'
 import SearchInput from '../components/SearchInput'
 import StatusBadge from '../components/StatusBadge'
@@ -26,6 +28,7 @@ import {
   SecondaryButton,
 } from '../components/FormField'
 import { haptic } from '../lib/haptics'
+import { celebrate } from '../lib/confetti'
 
 const EMPTY = { name: '', vendor: '', commission: '', delivery_cost: '', deadline: '', paid: false }
 
@@ -56,7 +59,8 @@ export default function Collects() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'received'>('all')
-  const [editing, setEditing] = useState<Collect | 'new' | null>(null)
+  const launchNew = useLaunchFlag()
+  const [editing, setEditing] = useState<Collect | 'new' | null>(launchNew ? 'new' : null)
   const [form, setForm] = useState(EMPTY)
   const [positions, setPositions] = useState<PositionRow[]>([])
   const [formError, setFormError] = useState<string | null>(null)
@@ -213,6 +217,7 @@ export default function Collects() {
         queryClient.invalidateQueries({ queryKey: ['collects'] }),
       ])
       showToast('Positions added to catalog ✓')
+      celebrate()
       setEditing(null)
     } catch (err) {
       setFormError(failureMessage('Receiving', err))
@@ -241,7 +246,7 @@ export default function Collects() {
 
   return (
     <div>
-      <PageHeader title="Collects">
+      <PageHeader title="Collects" icon={SECTIONS.collects.icon} tone={SECTIONS.collects.tone}>
         <AddButton onClick={() => openEditor('new')}>Add collect</AddButton>
       </PageHeader>
 
@@ -272,6 +277,7 @@ export default function Collects() {
         isError={isError}
         isEmpty={filtered.length === 0}
         icon={Printer}
+        tone={SECTIONS.collects.tone}
         errorMessage="Failed to load collects."
         emptyMessage={(collects ?? []).length === 0 ? 'No production runs yet.' : 'No collects match.'}
         onRetry={() => void refetch()}
