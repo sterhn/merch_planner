@@ -14,7 +14,7 @@ export default defineConfig({
       // Keep the hand-written public/manifest.webmanifest (already linked in index.html).
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2,webmanifest}'],
         runtimeCaching: [
           {
             // Data reads: fresh when online, last-seen data when offline.
