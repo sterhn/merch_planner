@@ -235,6 +235,24 @@ body {
   }
 }
 
+/* Wide screens (desktop, or a phone turned sideways) get landscape foils —
+   stretching the portrait ones to fill the width blew the grain up. */
+@media (orientation: landscape) {
+  .backdrop-holo {
+    background:
+      linear-gradient(var(--holo-veil), var(--holo-veil)),
+      url('./assets/holo-light-wide.webp') center / cover no-repeat;
+  }
+}
+
+@media (orientation: landscape) and (prefers-color-scheme: dark) {
+  .backdrop-holo {
+    background:
+      linear-gradient(var(--holo-veil), var(--holo-veil)),
+      url('./assets/holo-dark-wide.webp') center / cover no-repeat;
+  }
+}
+
 ::selection {
   background: color-mix(in oklch, var(--color-brand) 28%, transparent);
 }
