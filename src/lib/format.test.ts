@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   currentMonth,
+  dateInputValue,
   daysFromTodayISO,
   formatDate,
   formatMonth,
   formatRub,
   localMonth,
+  localNoonISO,
   monthKey,
   monthRange,
   parseCount,
@@ -84,6 +86,22 @@ describe('toISODate / todayISO / currentMonth', () => {
     const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     expect(todayISO()).toBe(expected)
     expect(currentMonth()).toBe(expected.slice(0, 7))
+  })
+})
+
+describe('dateInputValue / localNoonISO', () => {
+  it('round-trips a date input through a timestamp', () => {
+    expect(dateInputValue(localNoonISO('2026-09-01'))).toBe('2026-09-01')
+    expect(dateInputValue(localNoonISO('2026-12-31'))).toBe('2026-12-31')
+  })
+  it('keeps the local calendar month', () => {
+    expect(localMonth(localNoonISO('2026-10-01'))).toBe('2026-10')
+    expect(localMonth(localNoonISO('2026-09-30'))).toBe('2026-09')
+  })
+  it('is empty for no timestamp or an unreadable one', () => {
+    expect(dateInputValue(null)).toBe('')
+    expect(dateInputValue(undefined)).toBe('')
+    expect(dateInputValue('garbage')).toBe('')
   })
 })
 

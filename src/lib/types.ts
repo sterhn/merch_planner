@@ -34,6 +34,11 @@ export interface Order {
   total_price: number | null
   comment: string | null
   paid: boolean
+  /**
+   * When it was paid — stamped by a trigger as it's marked paid, cleared when
+   * unmarked (migration 010). Absent from rows until that migration is applied.
+   */
+  paid_at?: string | null
   delivery_method: string | null
   delivery_details: string | null
   sent: boolean

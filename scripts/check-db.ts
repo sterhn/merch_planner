@@ -7,7 +7,8 @@
 //
 // Read-only by default. Reports:
 //   - row counts per table
-//   - whether migration 004 is applied (description / product_photo_url columns)
+//   - whether migrations 004 (description / product_photo_url columns) and
+//     010 (orders.paid_at) are applied
 //   - whether the item-images and product-photos storage buckets exist
 //   - items with missing or duplicate SKUs (and what a backfill would assign)
 //   - bundle compositions
@@ -64,6 +65,17 @@ async function main() {
     problems++
   } else {
     console.log('\n✓ Migration 004 applied (description + product_photo_url columns exist)')
+  }
+
+  // --- Migration 010 column ---
+  const { error: paidAtError } = await db.from('orders').select('id, paid_at').limit(1)
+  if (paidAtError) {
+    console.log(`✗ Migration 010 NOT applied — ${paidAtError.message}`)
+    console.log('  Run supabase/migrations/010_order_paid_at.sql in the SQL editor.')
+    console.log('  (Until then revenue is counted by order date, not payment date.)')
+    problems++
+  } else {
+    console.log('✓ Migration 010 applied (orders.paid_at exists)')
   }
 
   // --- Storage buckets ---

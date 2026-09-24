@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatDate, formatRub, parseCount, parseMoney } from '../lib/format'
+import { dateInputValue, formatDate, formatRub, localNoonISO, parseCount, parseMoney } from '../lib/format'
 import { importedOrderRows, parseImportCode } from '../lib/importCode'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
@@ -33,6 +33,42 @@ import {
   textareaClass,
 } from '../components/FormField'
 
+/** The details form's fields for an order, as its inputs hold them. */
+function detailsForm(order: Order) {
+  return {
+    telegram: order.telegram ?? '',
+    customer_email: order.customer_email ?? '',
+    total_price: order.total_price?.toString() ?? '',
+    paid_at: dateInputValue(order.paid_at),
+    delivery_method: order.delivery_method ?? '',
+    delivery_details: order.delivery_details ?? '',
+    comment: order.comment ?? '',
+  }
+}
+
+type DetailsForm = ReturnType<typeof detailsForm>
+
+/**
+ * What saving the form would change on the order: only the fields that
+ * differ. So an untouched paid date is never sent — before migration 010 the
+ * column doesn't exist, and re-sending a date would move its time to noon.
+ */
+function detailsChanges(form: DetailsForm, order: Order): Partial<Order> {
+  const next: Partial<Order> = {
+    telegram: form.telegram || null,
+    customer_email: form.customer_email || null,
+    total_price: parseMoney(form.total_price),
+    delivery_method: form.delivery_method || null,
+    delivery_details: form.delivery_details || null,
+    comment: form.comment || null,
+  }
+  const changes = Object.fromEntries(
+    Object.entries(next).filter(([key, value]) => value !== order[key as keyof Order]),
+  ) as Partial<Order>
+  if (form.paid_at && form.paid_at !== dateInputValue(order.paid_at)) changes.paid_at = localNoonISO(form.paid_at)
+  return changes
+}
+
 function HeaderForm({
   order,
   pending,
@@ -42,34 +78,27 @@ function HeaderForm({
   pending: boolean
   onSave: (values: Partial<Order>) => void
 }) {
-  const [form, setForm] = useState({
-    telegram: order.telegram ?? '',
-    customer_email: order.customer_email ?? '',
-    total_price: order.total_price?.toString() ?? '',
-    delivery_method: order.delivery_method ?? '',
-    delivery_details: order.delivery_details ?? '',
-    comment: order.comment ?? '',
-  })
+  const [form, setForm] = useState(() => detailsForm(order))
 
-  // "use items total" rewrites the total from outside the form. Take the new
-  // value into that one field; the form used to remount for it instead, which
-  // threw away anything typed into the other fields and not yet saved.
-  const [syncedTotal, setSyncedTotal] = useState(order.total_price)
-  if (order.total_price !== syncedTotal) {
-    setSyncedTotal(order.total_price)
-    setForm((f) => ({ ...f, total_price: order.total_price?.toString() ?? '' }))
+  // Two fields change from outside the form: "use items total" rewrites the
+  // total, and marking the order paid or unpaid stamps or clears its paid date.
+  // Take the new value into just that field — remounting the form for it (as
+  // it once did for the total) threw away anything typed elsewhere, unsaved.
+  const [synced, setSynced] = useState({ total: order.total_price, paidAt: order.paid_at })
+  if (order.total_price !== synced.total || order.paid_at !== synced.paidAt) {
+    const fresh = detailsForm(order)
+    setForm((f) => ({
+      ...f,
+      ...(order.total_price !== synced.total ? { total_price: fresh.total_price } : {}),
+      ...(order.paid_at !== synced.paidAt ? { paid_at: fresh.paid_at } : {}),
+    }))
+    setSynced({ total: order.total_price, paidAt: order.paid_at })
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({
-      telegram: form.telegram || null,
-      customer_email: form.customer_email || null,
-      total_price: parseMoney(form.total_price),
-      delivery_method: form.delivery_method || null,
-      delivery_details: form.delivery_details || null,
-      comment: form.comment || null,
-    })
+    const changes = detailsChanges(form, order)
+    if (Object.keys(changes).length > 0) onSave(changes)
   }
 
   return (
@@ -87,6 +116,14 @@ function HeaderForm({
         <Field label="Total ₽">
           <input className={inputClass} type="text" inputMode="decimal" value={form.total_price} onChange={(e) => setForm({ ...form, total_price: e.target.value })} />
         </Field>
+        {/* Revenue lands in this date's month. Stamped when the order is marked
+            paid; correct it here when the money came in on another day. Hidden
+            until migration 010 gives orders the column. */}
+        {order.paid && order.paid_at !== undefined && (
+          <Field label="Paid on">
+            <input className={inputClass} type="date" value={form.paid_at} onChange={(e) => setForm({ ...form, paid_at: e.target.value })} />
+          </Field>
+        )}
         <Field label="Delivery method">
           <select className={inputClass} value={form.delivery_method} onChange={(e) => setForm({ ...form, delivery_method: e.target.value })}>
             <option value="">—</option>

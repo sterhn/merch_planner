@@ -102,6 +102,21 @@ export function todayISO(): string {
   return toISODate(new Date())
 }
 
+/** A timestamp as a `type="date"` input value (local YYYY-MM-DD); '' for none. */
+export function dateInputValue(timestamp: string | null | undefined): string {
+  if (!timestamp) return ''
+  const d = new Date(timestamp)
+  return Number.isNaN(d.getTime()) ? '' : toISODate(d)
+}
+
+/**
+ * A date input's YYYY-MM-DD as a timestamp at local noon. Noon, not midnight,
+ * so no timezone offset can tip it into the neighbouring day — or month.
+ */
+export function localNoonISO(date: string): string {
+  return new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)), 12).toISOString()
+}
+
 /**
  * `days` from today as YYYY-MM-DD. Steps the date component rather than adding
  * milliseconds, which lands on the wrong day across a DST boundary.

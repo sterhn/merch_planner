@@ -188,8 +188,10 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const inPeriod = (m: string | null) => period === 'all' || m === period
+    // Revenue lands in the month an order was paid. Until migration 010 gives
+    // orders a paid_at, the creation date stands in — what this counted by before.
     const orderRevenue = (orders ?? [])
-      .filter((o) => o.paid && inPeriod(localMonth(o.created_at)))
+      .filter((o) => o.paid && inPeriod(localMonth(o.paid_at ?? o.created_at)))
       .reduce((s, o) => s + (o.total_price ?? 0), 0)
     // The shelf page is archived, but its historical income still counts —
     // folded into Revenue so past months (and the all-time net) stay truthful.
