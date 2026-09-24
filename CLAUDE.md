@@ -20,6 +20,9 @@ Report how many commits behind the branch was. Never build on a stale base — a
 - React 19 + TypeScript + Vite 8, HashRouter (GitHub Pages), PWA via vite-plugin-pwa (offline caching; keep woff2 in `globPatterns`)
 - Tailwind CSS v4, CSS-first: design tokens live in an `@theme` block in `src/index.css`. Tokens use `light-dark()`, so dark mode follows the system automatically with no `dark:` variants.
 - Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`. PostgREST silently caps a read at 1000 rows: `useList` pages past it through `src/lib/readAll.ts`, and any other select that can grow unbounded should go through `readAll` too (the Orders bulk print does)
+- Stock moves in the database, never in the client: triggers take it when an order is marked sent and give it back when un-sent (003/005) or deleted while sent (009), and move the difference when a sent order's lines are added, removed or re-counted (011) — bundle components included. The client only invalidates `items` after such writes.
+- Revenue is counted in the month an order was paid: `orders.paid_at` (010), stamped by a trigger when `paid` flips and editable as "Paid on" in the order's details. Rows read before 010 is applied have no `paid_at` key, so code falls back to `created_at` and must never write `paid_at` unasked (`detailsChanges` in `src/lib/orderDetails.ts` sends only edited fields).
+- The order details form saves unsaved edits when it goes away (leaving, switching order, app hidden). Fields the user hasn't touched follow the order as it refetches (`followServer`), so a stale cached copy is never written back.
 - Icons: lucide-react (import icons individually). Fonts: Manrope Variable (body) + Nunito Variable (display, weight 820 via `--font-display--font-variation-settings`) — replacements must keep Cyrillic coverage.
 
 ### Tokens
