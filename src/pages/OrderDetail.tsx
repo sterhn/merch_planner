@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
@@ -6,7 +6,9 @@ import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { DELIVERY_METHODS } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { dateInputValue, formatDate, formatRub, localNoonISO, parseCount, parseMoney } from '../lib/format'
+import { formatDate, formatRub, parseCount, parseMoney } from '../lib/format'
+import { detailsChanges, detailsForm, followServer, type DetailsForm } from '../lib/orderDetails'
+import { failureMessage } from '../lib/errorMessage'
 import { importedOrderRows, parseImportCode } from '../lib/importCode'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
@@ -33,72 +35,69 @@ import {
   textareaClass,
 } from '../components/FormField'
 
-/** The details form's fields for an order, as its inputs hold them. */
-function detailsForm(order: Order) {
-  return {
-    telegram: order.telegram ?? '',
-    customer_email: order.customer_email ?? '',
-    total_price: order.total_price?.toString() ?? '',
-    paid_at: dateInputValue(order.paid_at),
-    delivery_method: order.delivery_method ?? '',
-    delivery_details: order.delivery_details ?? '',
-    comment: order.comment ?? '',
-  }
-}
-
-type DetailsForm = ReturnType<typeof detailsForm>
-
-/**
- * What saving the form would change on the order: only the fields that
- * differ. So an untouched paid date is never sent — before migration 010 the
- * column doesn't exist, and re-sending a date would move its time to noon.
- */
-function detailsChanges(form: DetailsForm, order: Order): Partial<Order> {
-  const next: Partial<Order> = {
-    telegram: form.telegram || null,
-    customer_email: form.customer_email || null,
-    total_price: parseMoney(form.total_price),
-    delivery_method: form.delivery_method || null,
-    delivery_details: form.delivery_details || null,
-    comment: form.comment || null,
-  }
-  const changes = Object.fromEntries(
-    Object.entries(next).filter(([key, value]) => value !== order[key as keyof Order]),
-  ) as Partial<Order>
-  if (form.paid_at && form.paid_at !== dateInputValue(order.paid_at)) changes.paid_at = localNoonISO(form.paid_at)
-  return changes
-}
-
 function HeaderForm({
   order,
   pending,
   onSave,
+  onLeave,
 }: {
   order: Order
   pending: boolean
   onSave: (values: Partial<Order>) => void
+  /** Saves what's still unsaved as the form goes away. Gets the order it was editing. */
+  onLeave: (order: Order, changes: Partial<Order>) => void
 }) {
   const [form, setForm] = useState(() => detailsForm(order))
 
-  // Two fields change from outside the form: "use items total" rewrites the
-  // total, and marking the order paid or unpaid stamps or clears its paid date.
-  // Take the new value into just that field — remounting the form for it (as
-  // it once did for the total) threw away anything typed elsewhere, unsaved.
-  const [synced, setSynced] = useState({ total: order.total_price, paidAt: order.paid_at })
-  if (order.total_price !== synced.total || order.paid_at !== synced.paidAt) {
-    const fresh = detailsForm(order)
-    setForm((f) => ({
-      ...f,
-      ...(order.total_price !== synced.total ? { total_price: fresh.total_price } : {}),
-      ...(order.paid_at !== synced.paidAt ? { paid_at: fresh.paid_at } : {}),
-    }))
-    setSynced({ total: order.total_price, paidAt: order.paid_at })
+  // Changes still unsaved when the form goes away — leaving the order, opening
+  // another one, or the app going to the background, where an installed PWA is
+  // often killed rather than closed — get saved instead of silently dropped.
+  // The listeners outlive any one render, so they read the latest values here.
+  const latest = useRef({ form, order, onLeave })
+  useEffect(() => {
+    latest.current = { form, order, onLeave }
+  })
+  // The edits last sent, by Save or by a flush. Until the saved order comes
+  // back they still look unsaved; this keeps them from going out twice. Only
+  // briefly, so edits whose save failed are still retried on the way out.
+  const lastSent = useRef({ key: '', at: 0 })
+  useEffect(() => {
+    function flush() {
+      const { form, order, onLeave } = latest.current
+      const changes = detailsChanges(form, order)
+      const key = JSON.stringify(changes)
+      if (key === '{}') return
+      if (key === lastSent.current.key && Date.now() - lastSent.current.at < 5000) return
+      lastSent.current = { key, at: Date.now() }
+      onLeave(order, changes)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      flush()
+    }
+  }, [])
+
+  // The order can change under the form: a refetch replacing the cached copy
+  // it opened with, "use items total", marking it paid. Fields the user hasn't
+  // touched follow; typed ones are kept (see followServer). Without this the
+  // form held stale values that looked like edits — and got saved back.
+  const [base, setBase] = useState(form)
+  const server = detailsForm(order)
+  if ((Object.keys(server) as (keyof DetailsForm)[]).some((k) => server[k] !== base[k])) {
+    setForm((f) => followServer(f, base, server))
+    setBase(server)
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const changes = detailsChanges(form, order)
-    if (Object.keys(changes).length > 0) onSave(changes)
+    if (Object.keys(changes).length === 0) return
+    lastSent.current = { key: JSON.stringify(changes), at: Date.now() }
+    onSave(changes)
   }
 
   return (
@@ -218,6 +217,9 @@ export default function OrderDetail() {
 
   const updateLine = useUpdate<OrderItem>('order_items', ['orders', 'items'])
   const { confirm, element: confirmSheet } = useConfirm()
+  // Set once a delete is confirmed, so the details form doesn't save edits
+  // left in it into the order that's being deleted.
+  const deleting = useRef(false)
 
   const [addingLine, setAddingLine] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -357,6 +359,26 @@ export default function OrderDetail() {
     } finally {
       setExporting(false)
     }
+  }
+
+  // The details form saving what was left unsaved as it goes away. Written
+  // straight to Supabase, as the mutation hooks here are unmounting too, and
+  // to the order the form was editing — by now the URL may name the next one.
+  function saveDetailsOnLeave(target: Order, changes: Partial<Order>) {
+    if (deleting.current) return
+    const who = target.telegram || target.customer_email || 'the order'
+    void supabase
+      .from('orders')
+      .update(changes as never)
+      .eq('id', target.id)
+      .then(({ error }) => {
+        if (error) {
+          showToast(failureMessage(`Saving the details for ${who}`, error))
+          return
+        }
+        showToast(`Details saved for ${who}`)
+        void qc.invalidateQueries({ queryKey: ['orders'] })
+      })
   }
 
   function openLineEdit(l: OrderItem) {
@@ -635,14 +657,21 @@ export default function OrderDetail() {
           order={order}
           pending={updateOrder.isPending}
           onSave={(values) => updateOrder.mutate({ id: id!, values })}
+          onLeave={saveDetailsOnLeave}
         />
 
         <div className="mt-4">
           <DangerButton
             onClick={() =>
-              confirm('Delete this whole order?', () =>
-                deleteOrder.mutate(id!, { onSuccess: () => navigate('/orders') }),
-              )
+              confirm('Delete this whole order?', () => {
+                deleting.current = true
+                deleteOrder.mutate(id!, {
+                  onSuccess: () => navigate('/orders'),
+                  onError: () => {
+                    deleting.current = false
+                  },
+                })
+              })
             }
           >
             Delete order
