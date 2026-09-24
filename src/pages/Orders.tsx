@@ -79,9 +79,10 @@ export default function Orders() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const insert = useInsert<Order>('orders')
-  // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
+  // Invalidate 'items' too: marking an order sent changes catalog stock, and
+  // deleting a sent order gives it back (DB triggers).
   const update = useUpdate<Order>('orders', ['items'])
-  const remove = useDelete('orders')
+  const remove = useDelete('orders', ['items'])
   const { confirm, element: confirmSheet } = useConfirm()
 
   // Optimistic: flip the badge in every cached orders list immediately, and

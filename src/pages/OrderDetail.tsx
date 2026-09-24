@@ -206,15 +206,17 @@ export default function OrderDetail() {
   const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
   })
-  // Invalidate 'items' too: marking an order sent changes catalog stock (DB trigger).
+  // Invalidate 'items' too: marking an order sent changes catalog stock, and
+  // deleting a sent order gives it back (DB triggers).
   const updateOrder = useUpdate<Order>('orders', ['items'])
-  const deleteOrder = useDelete('orders')
+  const deleteOrder = useDelete('orders', ['items'])
   // The Orders list embeds order_items for its thumbnails and item-name search,
-  // so line writes have to refresh it too.
-  const insertLine = useInsert<OrderItem>('order_items', ['orders'])
-  const deleteLine = useDelete('order_items', ['orders'])
+  // so line writes have to refresh it too — and 'items', since a line changed
+  // on a sent order moves catalog stock (migration 011).
+  const insertLine = useInsert<OrderItem>('order_items', ['orders', 'items'])
+  const deleteLine = useDelete('order_items', ['orders', 'items'])
 
-  const updateLine = useUpdate<OrderItem>('order_items')
+  const updateLine = useUpdate<OrderItem>('order_items', ['orders', 'items'])
   const { confirm, element: confirmSheet } = useConfirm()
 
   const [addingLine, setAddingLine] = useState(false)
@@ -332,6 +334,7 @@ export default function OrderDetail() {
       if (error) throw error
       qc.invalidateQueries({ queryKey: ['order_items'] })
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['items'] })
       setImporting(false)
       setImportText('')
     } catch (err) {

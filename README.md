@@ -80,7 +80,9 @@ Open **https://sterhn.github.io/merch_planner/** in the browser, log in, then us
 
 The consignment **Shelf** section is archived: its page is gone, but the `shelf_items` data stays and past shelf income still counts toward dashboard revenue (see CLAUDE.md to bring it back).
 
-Marking an order **sent** automatically decreases catalog stock for its items (and restores it if you un-mark sent). Items added to an order *after* it was already marked sent don't adjust stock.
+Marking an order **sent** automatically decreases catalog stock for its items (and restores it if you un-mark sent or delete the order). Adding, removing or changing the quantity of items on an order that's already sent adjusts stock too (migration 011). Bundles move their components' stock the same way.
+
+Dashboard revenue counts each paid order in the month it was paid (migration 010; set by marking it paid, or by hand with **Paid on** in the order's details).
 
 The app is a PWA: after the first visit it loads instantly and shows your latest cached data even offline (changes still need a connection).
 
