@@ -2,6 +2,12 @@
 
 Personal single-user merch shop tracker (orders, catalog, production runs, expenses). Bilingual context: UI is English, data contains Russian (₽, ru-RU dates, Cyrillic item names).
 
+Catalog item names are lowercase Russian, using the official Russian translation where one exists (settled with the owner, Oct 2026):
+- **[ORV]** — «Точка зрения Всеведущего читателя» (О2, tr. Е. Ким): докча, джунхёк, «три способа выжить». Han Sooyoung stays **суён** by the owner's choice, though the book prints «Союнг».
+- **[MSCH]** (no official Russian edition) — the Russian community's tags: юджин, юхён, хёндже, ерим, «S-классы».
+- **[GSGW]** — «Сольым» stays.
+- English words printed on a design stay English (good child, pink, [love us back]…); fandom nicknames (юханким, кимком, плоттер…) stay as written. When unsure of an official form, ask the owner first.
+
 The consignment-shelf feature is **archived** (owner moved off the shelf, Aug 2026): `src/pages/Shelf.tsx`, its route and nav entry are removed, but the `shelf_items` table and its data remain, and the dashboard still folds historical shelf income into Revenue. To bring it back, restore `Shelf.tsx` from git history and re-add the route + nav entry.
 
 ## Before starting ANY work — sync with main
