@@ -11,13 +11,17 @@
 //     010 (orders.paid_at) are applied
 //   - whether the item-images and product-photos storage buckets exist
 //   - items with missing or duplicate SKUs (and what a backfill would assign)
+//   - SKUs off the app's FANDOM-TYPE-NN convention (src/lib/sku.ts), with a
+//     suggested replacement — reported only, as a SKU may be on printed labels
 //   - bundle compositions
 //
 // --fix-skus  actually writes the proposed SKUs for items that lack one.
-//             New SKUs are FANDOM-NN, continuing after the highest existing
-//             number for that fandom and never colliding with any current SKU.
+//             They come from the app's own autofill (nextSku): FANDOM-TYPE-NN,
+//             or FANDOM-NN for a type without a code, continuing after the
+//             highest number in the series and never colliding with any SKU.
 
 import { createClient } from '@supabase/supabase-js'
+import { nextSku, skuIssues } from '../src/lib/sku'
 
 const fixSkus = process.argv.includes('--fix-skus')
 
@@ -36,10 +40,6 @@ interface ItemRow {
   name: string
   type: string | null
   fandom: string | null
-}
-
-function skuPrefix(fandom: string | null): string {
-  return (fandom ?? '').replace(/[[\]]/g, '').toUpperCase().trim()
 }
 
 async function main() {
@@ -125,35 +125,40 @@ async function main() {
     console.log('\n✓ No duplicate SKUs')
   }
 
+  // Every SKU in use, plus each one suggested or proposed below, so no two
+  // suggestions land on the same code.
+  const taken = new Set(items.map((i) => i.sku).filter(Boolean) as string[])
+
+  // Drift from FANDOM-TYPE-NN — typically an item whose type or fandom was
+  // changed after its SKU was set. Suggested, never rewritten here.
+  const offConvention = items.filter((i) => skuIssues(i).length > 0)
+  if (offConvention.length === 0) {
+    console.log('✓ Every SKU follows FANDOM-TYPE-NN')
+  } else {
+    console.log(`\n✗ SKUs off the FANDOM-TYPE-NN convention (${offConvention.length}):`)
+    for (const item of offConvention) {
+      const suggestion = nextSku(item.fandom ?? '', item.type ?? '', [...taken])
+      if (suggestion) taken.add(suggestion)
+      console.log(`  ${item.sku} — ${item.name}: ${skuIssues(item).join('; ')}${suggestion ? ` → e.g. ${suggestion}` : ''}`)
+    }
+    console.log('  Change these in the app (the SKU field) unless the old code is already on labels.')
+    problems += offConvention.length
+  }
+
   const missing = items.filter((i) => !i.sku?.trim())
   if (missing.length === 0) {
     console.log('✓ Every item has a SKU')
   } else {
     console.log(`\nItems without a SKU (${missing.length}):`)
 
-    // Continue numbering after the highest existing FANDOM-NN (bare numeric
-    // suffix); FANDOM-CAT-NN style SKUs from the imports are left untouched
-    // and can't collide with the generated ones.
-    const taken = new Set(items.map((i) => i.sku).filter(Boolean) as string[])
-    const nextByPrefix = new Map<string, number>()
-    for (const sku of taken) {
-      const match = sku.match(/^(.+)-(\d+)$/)
-      if (!match) continue
-      const n = Number(match[2])
-      if (n > (nextByPrefix.get(match[1]) ?? 0)) nextByPrefix.set(match[1], n)
-    }
-
+    // The same codes the app's autofill would give these items.
     const proposals: { id: string; name: string; sku: string }[] = []
     for (const item of missing) {
-      const prefix = skuPrefix(item.fandom)
-      if (!prefix) {
+      const sku = nextSku(item.fandom ?? '', item.type ?? '', [...taken])
+      if (!sku) {
         console.log(`  SKIP (no fandom): ${item.name}`)
         continue
       }
-      let n = (nextByPrefix.get(prefix) ?? 0) + 1
-      while (taken.has(`${prefix}-${String(n).padStart(2, '0')}`)) n++
-      const sku = `${prefix}-${String(n).padStart(2, '0')}`
-      nextByPrefix.set(prefix, n)
       taken.add(sku)
       proposals.push({ id: item.id, name: item.name, sku })
       console.log(`  ${fixSkus ? 'SET' : 'would set'} ${sku}: ${item.name}`)

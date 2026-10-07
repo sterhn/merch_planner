@@ -63,5 +63,5 @@ Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each
 - Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there.
 - Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
 - Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. `parseMoney` also takes space thousands separators and a trailing ₽, so pasted "1 500 ₽" reads as 1500. Whole-number counts stay `type="number" inputMode="numeric"`.
-- SKUs autofill from type + fandom via `src/lib/sku.ts` (`TYPE_ABBR`, `nextSku`: FANDOM-TYPE-NN, or FANDOM-NN for a type without a code) until the SKU is typed by hand.
+- SKUs autofill from type + fandom via `src/lib/sku.ts` (`TYPE_ABBR`, `nextSku`: FANDOM-TYPE-NN, or FANDOM-NN for a type without a code) until the SKU is typed by hand. `skuIssues` flags a SKU that has drifted from its item's type or fandom; `scripts/check-db.ts` reports those and backfills missing SKUs with `nextSku`, so there's one convention everywhere. A new type needs its code added to `TYPE_ABBR`.
 - Inputs use 16px text (`text-base`) so iOS doesn't zoom on focus
