@@ -1,110 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Tags, X } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { Archive, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
-import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { deleteItemImage, uploadItemImage, uploadProductPhoto } from '../lib/images'
+import { useList } from '../hooks/useTable'
+import { useSettings } from '../hooks/useSettings'
 import { buildableCounts, groupBundles, summarizeParts, type BundleComponent } from '../lib/bundles'
-import { supabase } from '../lib/supabase'
-import { failureMessage } from '../lib/errorMessage'
-import { formatRub, parseCount, parseMoney } from '../lib/format'
+import { formatRub } from '../lib/format'
+import { catalogView, saveCatalogView } from '../lib/viewState'
 import Modal from '../components/Modal'
-import CatalogPicker from '../components/CatalogPicker'
-import { useConfirm } from '../hooks/useConfirm'
 import FilterChip from '../components/FilterChip'
-import { AddRowButton, PickRowButton } from '../components/RowEditor'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
-import {
-  AddButton,
-  DangerButton,
-  Field,
-  IconButton,
-  inputClass,
-  PrimaryButton,
-  textareaClass,
-} from '../components/FormField'
+import { AddButton, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
-
-const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '', product_photo_url: '' }
-
-function PhotoField({ label, url, file, onPick, onClear, pct, alt }: {
-  label: string
-  url: string
-  file: File | null
-  onPick: (f: File | null) => void
-  onClear: () => void
-  pct: number | null
-  alt: string
-}) {
-  const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview)
-    }
-  }, [preview])
-
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-3">
-        {(file || url) && (
-          <img src={preview ?? url} alt={alt} className="size-14 rounded-lg object-cover" />
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => onPick(e.target.files?.[0] ?? null)}
-          className="min-w-0 flex-1 text-xs text-ink-muted file:mr-2 file:rounded-full file:border-0 file:bg-brand/10 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand"
-        />
-        {(file || url) && <IconButton icon={X} size={10} tone="danger" label="Remove photo" onClick={onClear} />}
-      </div>
-      {pct !== null && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={Math.round(pct * 100)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${Math.round(pct * 100)}%` }} />
-        </div>
-      )}
-    </Field>
-  )
-}
-
-function ComboSelect({ value, onChange, options, placeholder }: {
-  value: string
-  onChange: (v: string) => void
-  options: string[]
-  placeholder?: string
-}) {
-  const [adding, setAdding] = useState(!options.includes(value) && value !== '')
-  const selectVal = adding ? '__new__' : value
-
-  return (
-    <div className="space-y-2">
-      <select
-        className={inputClass}
-        value={selectVal}
-        onChange={(e) => {
-          if (e.target.value === '__new__') { setAdding(true); onChange('') }
-          else { setAdding(false); onChange(e.target.value) }
-        }}
-      >
-        <option value="">—</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-        <option value="__new__">＋ Add new…</option>
-      </select>
-      {adding && (
-        <input
-          autoFocus
-          className={inputClass}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? 'Type new value…'}
-        />
-      )}
-    </div>
-  )
-}
+import ItemEditor from './catalog/ItemEditor'
 
 function ItemImage({ src, type }: { src: string | null; type: string | null }) {
   if (src) {
@@ -123,31 +34,17 @@ export default function Catalog() {
   const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
   })
-  // The editor shows save failures inline (and stays open), so the global
-  // error toast would be a duplicate.
-  const insert = useInsert<Item>('items', [], { suppressErrorToast: true })
-  const update = useUpdate<Item>('items', [], { suppressErrorToast: true })
-  const remove = useDelete('items')
-  const queryClient = useQueryClient()
-  const { confirm, element: confirmSheet } = useConfirm()
+  const { settings } = useSettings()
 
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string | null>(null)
-  const [fandomFilter, setFandomFilter] = useState<string | null>(null)
+  // Filters come back from the last visit, like the Orders list.
+  const [view, setView] = useState(catalogView)
+  const updateView = (patch: Partial<typeof view>) => {
+    setView((v) => ({ ...v, ...patch }))
+    saveCatalogView(patch)
+  }
   const launchNew = useLaunchFlag()
   const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
   const [viewing, setViewing] = useState<Item | null>(null)
-  // Index of the bundle row whose component picker modal is open
-  const [pickerFor, setPickerFor] = useState<number | null>(null)
-  const [form, setForm] = useState(EMPTY)
-  const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>([])
-  const [itemPhoto, setItemPhoto] = useState<File | null>(null)
-  const [productPhoto, setProductPhoto] = useState<File | null>(null)
-  const [itemPct, setItemPct] = useState<number | null>(null)
-  const [productPct, setProductPct] = useState<number | null>(null)
-  const [photoError, setPhotoError] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const uploading = itemPct !== null || productPct !== null
 
   const itemById = useMemo(() => {
     const m = new Map<string, Item>()
@@ -182,18 +79,16 @@ export default function Catalog() {
     return Array.from(s).sort()
   }, [items])
 
-  const componentOptions = useMemo(() => {
-    const selfId = editing !== 'new' && editing ? editing.id : null
-    return (items ?? [])
-      .filter((i) => i.id !== selfId)
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-  }, [items, editing])
+  const archivedCount = useMemo(() => (items ?? []).filter((i) => i.archived).length, [items])
+  // Leaving the archive view once it's empty (the last item was restored).
+  const showArchived = view.archived && archivedCount > 0
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = view.search.trim().toLowerCase()
     return (items ?? []).filter((i) => {
-      if (typeFilter && i.type !== typeFilter) return false
-      if (fandomFilter && i.fandom !== fandomFilter) return false
+      if (Boolean(i.archived) !== showArchived) return false
+      if (view.type && i.type !== view.type) return false
+      if (view.fandom && i.fandom !== view.fandom) return false
       if (!q) return true
       return (
         i.name.toLowerCase().includes(q) ||
@@ -202,148 +97,10 @@ export default function Catalog() {
         (i.sku ?? '').toLowerCase().includes(q)
       )
     })
-  }, [items, search, typeFilter, fandomFilter])
-
-  const TYPE_ABBR: Record<string, string> = {
-    'брелок': 'K', 'значок': 'B', 'карточка': 'C', 'открытка А6': 'PC',
-    'открытка А5': 'PC2', 'шейкер': 'SH', 'стикеры': 'SK', 'стенд': 'ST',
-    'гача': 'G', 'набор': 'SET', 'лента': 'RB', 'шоколадка': 'CH',
-  }
-
-  function autoSku(fandom: string, type: string) {
-    const prefix = fandom.replace(/[[\]]/g, '').toUpperCase()
-    if (!prefix) return ''
-    const typeCode = TYPE_ABBR[type]
-    if (!typeCode) return `${prefix}-01`
-    const tag = `${prefix}-${typeCode}-`
-    let max = 0
-    for (const i of items ?? []) {
-      const s = i.sku ?? ''
-      if (s.startsWith(tag)) {
-        const n = parseInt(s.slice(tag.length))
-        if (n > max) max = n
-      }
-    }
-    return `${tag}${String(max + 1).padStart(2, '0')}`
-  }
+  }, [items, view, showArchived])
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
-    setItemPhoto(null)
-    setProductPhoto(null)
-    setPhotoError(null)
-    setSaveError(null)
-    if (item === 'new') {
-      setForm(EMPTY)
-      setBundleRows([])
-    } else {
-      setForm({
-        type: item.type ?? '',
-        fandom: item.fandom ?? '',
-        sku: item.sku ?? '',
-        name: item.name,
-        description: item.description ?? '',
-        cost_price: item.cost_price?.toString() ?? '',
-        sale_price: item.sale_price?.toString() ?? '',
-        stock_qty: item.stock_qty?.toString() ?? '',
-        image_url: item.image_url ?? '',
-        product_photo_url: item.product_photo_url ?? '',
-      })
-      setBundleRows(
-        (rawBundles ?? [])
-          .filter((b) => b.bundle_id === item.id)
-          .map((b) => ({ component_id: b.component_id, qty: String(b.qty) })),
-      )
-    }
-  }
-
-  // Replaces the item's bundle composition with the editor rows (merging
-  // duplicate component picks). No-op for items that never were bundles.
-  async function syncBundleItems(bundleId: string) {
-    const merged = new Map<string, number>()
-    for (const row of bundleRows) {
-      if (!row.component_id) continue
-      const qty = parseCount(row.qty, 1) ?? 1
-      merged.set(row.component_id, (merged.get(row.component_id) ?? 0) + qty)
-    }
-    const rows = Array.from(merged, ([component_id, qty]) => ({ bundle_id: bundleId, component_id, qty }))
-    if (rows.length === 0 && !(rawBundles ?? []).some((b) => b.bundle_id === bundleId)) return
-    const { error: delError } = await supabase.from('bundle_items').delete().eq('bundle_id', bundleId)
-    if (delError) throw delError
-    if (rows.length > 0) {
-      const { error } = await supabase.from('bundle_items').insert(rows)
-      if (error) throw error
-    }
-    await queryClient.invalidateQueries({ queryKey: ['bundle_items'] })
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    setPhotoError(null)
-    setSaveError(null)
-    let imageUrl = form.image_url || null
-    let productUrl = form.product_photo_url || null
-    // Keep uploaded URLs in the form so a retry after a failure further down
-    // doesn't upload the same photo a second time.
-    if (itemPhoto) {
-      setItemPct(0)
-      try {
-        imageUrl = await uploadItemImage(itemPhoto, setItemPct)
-        setItemPhoto(null)
-        setForm((f) => ({ ...f, image_url: imageUrl ?? '' }))
-      } catch {
-        setPhotoError('Item photo upload failed — check that the item-images bucket exists (see README).')
-        return
-      } finally {
-        setItemPct(null)
-      }
-    }
-    if (productPhoto) {
-      setProductPct(0)
-      try {
-        productUrl = await uploadProductPhoto(productPhoto, setProductPct)
-        setProductPhoto(null)
-        setForm((f) => ({ ...f, product_photo_url: productUrl ?? '' }))
-      } catch {
-        setPhotoError('Product photo upload failed — check that the product-photos bucket exists (see README).')
-        return
-      } finally {
-        setProductPct(null)
-      }
-    }
-    const values = {
-      type: form.type || null,
-      fandom: form.fandom || null,
-      sku: form.sku || null,
-      name: form.name,
-      description: form.description.trim() || null,
-      cost_price: parseMoney(form.cost_price),
-      sale_price: parseMoney(form.sale_price),
-      stock_qty: parseCount(form.stock_qty),
-      image_url: imageUrl,
-      product_photo_url: productUrl,
-    }
-    try {
-      const old = editing !== 'new' && editing ? editing : null
-      let savedId: string
-      if (editing === 'new') {
-        const created = await insert.mutateAsync(values)
-        savedId = created.id
-        // If the bundle sync below fails, a retry must update, not re-insert.
-        setEditing(created)
-      } else if (editing) {
-        await update.mutateAsync({ id: editing.id, values })
-        savedId = editing.id
-      } else {
-        return
-      }
-      await syncBundleItems(savedId)
-      if (old?.image_url && old.image_url !== imageUrl) void deleteItemImage(old.image_url)
-      if (old?.product_photo_url && old.product_photo_url !== productUrl) void deleteItemImage(old.product_photo_url)
-      setEditing(null)
-    } catch (err) {
-      setSaveError(failureMessage('Save', err))
-    }
   }
 
   return (
@@ -351,22 +108,30 @@ export default function Catalog() {
       <PageHeader title="Catalog" icon={SECTIONS.catalog.icon} tone={SECTIONS.catalog.tone}>
         <AddButton onClick={() => openEditor('new')}>Add item</AddButton>
       </PageHeader>
-      <SearchInput className="mb-3" label="Search catalog" value={search} onChange={setSearch} />
+      <SearchInput className="mb-3" label="Search catalog" value={view.search} onChange={(search) => updateView({ search })} />
 
-      {types.length > 0 && (
+      {(types.length > 0 || archivedCount > 0) && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
-          <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>All types</FilterChip>
+          <FilterChip active={view.type === null} onClick={() => updateView({ type: null })}>All types</FilterChip>
           {types.map((t) => (
-            <FilterChip key={t} active={typeFilter === t} onClick={() => setTypeFilter(typeFilter === t ? null : t)}>{t}</FilterChip>
+            <FilterChip key={t} active={view.type === t} onClick={() => updateView({ type: view.type === t ? null : t })}>{t}</FilterChip>
           ))}
+          {archivedCount > 0 && (
+            <FilterChip active={showArchived} onClick={() => updateView({ archived: !showArchived })} count={archivedCount}>
+              <span className="flex items-center gap-1">
+                <Archive size={13} />
+                Archived
+              </span>
+            </FilterChip>
+          )}
         </div>
       )}
 
       {fandoms.length > 0 && (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-          <FilterChip active={fandomFilter === null} onClick={() => setFandomFilter(null)}>All fandoms</FilterChip>
+          <FilterChip active={view.fandom === null} onClick={() => updateView({ fandom: null })}>All fandoms</FilterChip>
           {fandoms.map((f) => (
-            <FilterChip key={f} active={fandomFilter === f} onClick={() => setFandomFilter(fandomFilter === f ? null : f)}>{f}</FilterChip>
+            <FilterChip key={f} active={view.fandom === f} onClick={() => updateView({ fandom: view.fandom === f ? null : f })}>{f}</FilterChip>
           ))}
         </div>
       )}
@@ -378,7 +143,7 @@ export default function Catalog() {
         icon={Tags}
         tone={SECTIONS.catalog.tone}
         errorMessage="Failed to load catalog."
-        emptyMessage="No items yet."
+        emptyMessage={(items ?? []).length === 0 ? 'No items yet.' : 'No items match.'}
         onRetry={() => void refetch()}
       />
 
@@ -419,7 +184,11 @@ export default function Catalog() {
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
-                  <p className={`text-xs font-semibold ${stockShown <= 2 ? 'text-bad' : 'text-ink-faint'}`}>
+                  <p
+                    className={`text-xs font-semibold ${
+                      !item.archived && stockShown <= settings.lowStockThreshold ? 'text-bad' : 'text-ink-faint'
+                    }`}
+                  >
                     {canMake !== null ? `can make: ${canMake}` : `stock: ${stockShown}`}
                   </p>
                 </div>
@@ -429,156 +198,17 @@ export default function Catalog() {
         })}
       </div>
 
-      <Modal title={editing === 'new' ? 'Add item' : 'Edit item'} open={editing !== null} onClose={() => setEditing(null)}>
-        <form onSubmit={save}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Type">
-              <ComboSelect
-                value={form.type}
-                onChange={(v) => {
-                  const sku = form.fandom ? autoSku(form.fandom, v) : ''
-                  setForm({ ...form, type: v, ...(sku && !form.sku ? { sku } : {}) })
-                }}
-                options={types}
-                placeholder="брелок / значок…"
-              />
-            </Field>
-            <Field label="Fandom">
-              <ComboSelect
-                value={form.fandom}
-                onChange={(v) => {
-                  const sku = form.sku || autoSku(v, form.type)
-                  setForm({ ...form, fandom: v, sku })
-                }}
-                options={fandoms}
-                placeholder="kdj / tgcf…"
-              />
-            </Field>
-          </div>
-          <Field label="Name">
-            <input className={inputClass} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </Field>
-          <Field label="SKU">
-            <input className={inputClass} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="optional product code" />
-          </Field>
-          <Field label="Description">
-            <textarea
-              className={textareaClass}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="optional — materials, size, notes…"
-            />
-          </Field>
-          <PhotoField
-            label="Item photo (small)"
-            url={form.image_url}
-            file={itemPhoto}
-            onPick={setItemPhoto}
-            onClear={() => {
-              setItemPhoto(null)
-              setForm({ ...form, image_url: '' })
-            }}
-            pct={itemPct}
-            alt={form.name ? `Photo of ${form.name}` : 'Item photo'}
-          />
-          <PhotoField
-            label="Product photo (large)"
-            url={form.product_photo_url}
-            file={productPhoto}
-            onPick={setProductPhoto}
-            onClear={() => {
-              setProductPhoto(null)
-              setForm({ ...form, product_photo_url: '' })
-            }}
-            pct={productPct}
-            alt={form.name ? `Product photo of ${form.name}` : 'Product photo'}
-          />
-          <Field label="Bundle components">
-            <div className="space-y-2">
-              {bundleRows.map((row, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <PickRowButton
-                    label={row.component_id ? (itemById.get(row.component_id)?.name ?? '?') : null}
-                    empty="tap to pick item…"
-                    onClick={() => setPickerFor(i)}
-                  />
-                  {/* wrapper fixes the width: inputClass's w-full would win over w-20 */}
-                  <div className="w-16 shrink-0">
-                    <input
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      aria-label="Quantity"
-                      className={`${inputClass} text-center`}
-                      value={row.qty}
-                      onChange={(e) =>
-                        setBundleRows(bundleRows.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))
-                      }
-                    />
-                  </div>
-                  <IconButton
-                    icon={X}
-                    size={10}
-                    tone="danger"
-                    label="Remove component"
-                    onClick={() => {
-                      haptic()
-                      setBundleRows(bundleRows.filter((_, j) => j !== i))
-                    }}
-                  />
-                </div>
-              ))}
-              <AddRowButton onClick={() => setBundleRows([...bundleRows, { component_id: '', qty: '1' }])}>
-                Add component
-              </AddRowButton>
-              {bundleRows.length === 0 && (
-                <p className="text-xs text-ink-faint">Optional — list what's inside if this item is a set.</p>
-              )}
-            </div>
-          </Field>
-          <div className="grid grid-cols-3 gap-3">
-            {/* Money fields are text, not number: a number input rejects the comma
-                decimal separator a Russian keyboard produces (parseMoney handles it). */}
-            <Field label="Cost ₽">
-              <input className={inputClass} type="text" inputMode="decimal" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
-            </Field>
-            <Field label="Price ₽">
-              <input className={inputClass} type="text" inputMode="decimal" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} />
-            </Field>
-            <Field label="Stock">
-              <input className={inputClass} type="number" inputMode="numeric" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} />
-            </Field>
-          </div>
-          <PrimaryButton type="submit" disabled={insert.isPending || update.isPending || uploading}>
-            {uploading ? 'Uploading photo…' : 'Save'}
-          </PrimaryButton>
-          {(photoError || saveError) && (
-            <p role="alert" className="mt-2 text-sm font-semibold text-bad">
-              {photoError ?? saveError}
-            </p>
-          )}
-          {editing !== 'new' && editing && (
-            <div className="mt-2">
-              <DangerButton
-                type="button"
-                onClick={() =>
-                  confirm('Delete this item?', () =>
-                    remove.mutate(editing.id, {
-                      onSuccess: () => {
-                        void deleteItemImage(editing.image_url)
-                        void deleteItemImage(editing.product_photo_url)
-                        setEditing(null)
-                      },
-                    }),
-                  )
-                }
-              >
-                Delete
-              </DangerButton>
-            </div>
-          )}
-        </form>
-      </Modal>
+      {editing !== null && (
+        <ItemEditor
+          key={editing === 'new' ? 'new' : editing.id}
+          item={editing}
+          items={items ?? []}
+          rawBundles={rawBundles ?? []}
+          types={types}
+          fandoms={fandoms}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <Modal title={viewing?.name ?? 'Item'} open={viewing !== null} onClose={() => setViewing(null)}>
         {viewing && (
@@ -624,23 +254,6 @@ export default function Catalog() {
           </div>
         )}
       </Modal>
-
-      <Modal title="Pick component" open={pickerFor !== null} onClose={() => setPickerFor(null)}>
-        <CatalogPicker
-          catalog={componentOptions}
-          value={pickerFor !== null ? (bundleRows[pickerFor]?.component_id ?? '') : ''}
-          allowCustom={false}
-          stockFor={(i) => i.stock_qty ?? 0}
-          onSelect={(id) => {
-            if (pickerFor !== null) {
-              setBundleRows(bundleRows.map((r, j) => (j === pickerFor ? { ...r, component_id: id } : r)))
-            }
-            setPickerFor(null)
-          }}
-        />
-      </Modal>
-
-      {confirmSheet}
     </div>
   )
 }

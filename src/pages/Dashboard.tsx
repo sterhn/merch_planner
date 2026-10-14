@@ -5,23 +5,26 @@ import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
+  DownloadCloud,
   HandCoins,
   LayoutDashboard,
-  LogOut,
   MoonStar,
+  PackageCheck,
   PartyPopper,
   Send,
   Sparkle,
   Sun,
   Sunrise,
   Sunset,
+  Wallet,
   TrendingDown,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
 import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/types'
 import { useList } from '../hooks/useTable'
-import { useSignOut } from '../hooks/useAuth'
+import { useSettings } from '../hooks/useSettings'
+import { backupDue } from '../lib/settings'
 import EmptyState from '../components/EmptyState'
 import LoadingDots from '../components/LoadingDots'
 import {
@@ -33,19 +36,25 @@ import {
   localMonth,
   monthKey,
   monthRange,
+  localISODate,
   todayISO,
 } from '../lib/format'
-import { currentDayPart, daysBetween, dueLabel, GREETING, todayLabel, type DayPart } from '../lib/greeting'
+import { currentDayPart, daysBetween, dueLabel, GREETING, lateLabel, todayLabel, type DayPart } from '../lib/greeting'
 import { haptic } from '../lib/haptics'
 import AnimatedNumber from '../components/AnimatedNumber'
 import Card from '../components/Card'
 import OrderStatus from '../components/OrderStatus'
 import PageHeader from '../components/PageHeader'
 import StatTile from '../components/StatTile'
-import { SECTIONS } from '../components/sections'
+import { SECTIONS, SETTINGS } from '../components/sections'
 import { TONE_BLOB, type Tone } from '../components/tones'
 
 const MONTH_KEY = /^\d{4}-\d{2}$/
+
+/** The timestamp that decides an order's revenue month. */
+function paidMonthSource(o: Order): string {
+  return o.paid_at ?? o.created_at
+}
 
 const DAY_ICON: Record<DayPart, LucideIcon> = {
   morning: Sunrise,
@@ -69,22 +78,31 @@ const QUICK_ACTIONS = [
   { ...SECTIONS.expenses, to: '/expenses?new=1', label: 'Expense' },
 ]
 
-/** The sidebar sign-out is desktop-only, so mobile needs one here. */
-function SignOutButton() {
-  const signOut = useSignOut()
+/** Unpaid this long, an order gets flagged as worth a nudge. */
+const UNPAID_NUDGE_DAYS = 7
+
+/** Settings (and sign-out) live in the sidebar on desktop; mobile reaches them here. */
+function SettingsLink() {
   return (
-    <button
-      type="button"
-      onClick={() => {
-        haptic()
-        void signOut()
-      }}
-      aria-label="Sign out"
+    <Link
+      to={SETTINGS.to}
+      onClick={() => haptic(5)}
+      aria-label="Settings"
       className="tap grid size-11 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink md:hidden"
     >
-      <LogOut size={18} />
-    </button>
+      <SETTINGS.icon size={19} />
+    </Link>
   )
+}
+
+/** A collect date worth surfacing: a payment to make or a parcel to expect. */
+interface CollectEvent {
+  key: string
+  collect: Collect
+  kind: 'pay' | 'arrive'
+  date: string
+  days: number
+  urgent: boolean
 }
 
 function HeroCard({ value, revenue }: { value: number; revenue: number }) {
@@ -124,8 +142,8 @@ function HeroCard({ value, revenue }: { value: number; revenue: number }) {
   )
 }
 
-function ActionCard({ label, count, to, tone, icon: Icon, index }: {
-  label: string; count: number; to: string; tone: Tone; icon: LucideIcon; index: number
+function ActionCard({ label, hint, count, to, tone, icon: Icon, index }: {
+  label: string; hint?: string; count: number; to: string; tone: Tone; icon: LucideIcon; index: number
 }) {
   return (
     <Link
@@ -141,6 +159,7 @@ function ActionCard({ label, count, to, tone, icon: Icon, index }: {
           <AnimatedNumber value={count} />
         </p>
         <p className="truncate text-2xs font-semibold text-ink-faint">{label}</p>
+        {hint && <p className="truncate text-2xs font-bold text-bad">{hint}</p>}
       </div>
     </Link>
   )
@@ -171,12 +190,14 @@ export default function Dashboard() {
   const [period, setPeriod] = useState(currentMonth)
   const [part] = useState(currentDayPart)
   const [dateLabel] = useState(todayLabel)
+  const [now] = useState(() => new Date())
+  const { settings, isLoading: settingsLoading } = useSettings()
 
   // 'all' followed by every month from the earliest data point up to now,
   // so the stepper can walk back through history and land on the total.
   const periods = useMemo(() => {
     const keys = [
-      ...(orders ?? []).map((o) => localMonth(o.created_at)),
+      ...(orders ?? []).map((o) => localMonth(paidMonthSource(o))),
       ...(expenses ?? []).map((e) => monthKey(e.date)),
       ...(shelf ?? []).map((r) => r.month ?? ''),
     ].filter((k) => MONTH_KEY.test(k))
@@ -188,43 +209,66 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const inPeriod = (m: string | null) => period === 'all' || m === period
+    // Counted in the month the money came in. Orders paid before migration 010
+    // have no paid_at, so they fall back to the month they were created.
     const orderRevenue = (orders ?? [])
-      .filter((o) => o.paid && inPeriod(localMonth(o.created_at)))
+      .filter((o) => o.paid && inPeriod(localMonth(paidMonthSource(o))))
       .reduce((s, o) => s + (o.total_price ?? 0), 0)
     // The shelf page is archived, but its historical income still counts —
     // folded into Revenue so past months (and the all-time net) stay truthful.
     const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
     const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
     const revenue = orderRevenue + shelfIncome
+    const unpaid = (orders ?? []).filter((o) => !o.paid)
+    const today = todayISO()
     return {
       revenue,
       totalExpenses,
       net: revenue - totalExpenses,
-      unpaid: (orders ?? []).filter((o) => !o.paid).length,
+      unpaid: unpaid.length,
+      unpaidStale: unpaid.filter((o) => daysBetween(localISODate(o.created_at), today) >= UNPAID_NUDGE_DAYS).length,
       toSend: (orders ?? []).filter((o) => o.paid && !o.sent).length,
     }
   }, [orders, shelf, expenses, period])
 
+  // Two dates per collect: pay by (deadline) and arrives by. Overdue payments
+  // and late arrivals stay listed — those are the ones that need you most.
   const upcoming = useMemo(() => {
     const today = todayISO()
     const soon = daysFromTodayISO(7)
-    return (collects ?? [])
+    const events: CollectEvent[] = []
+    for (const c of collects ?? []) {
       // A collect that already arrived has nothing left to be due.
-      .filter((c) => !c.received_at && c.deadline != null && c.deadline >= today)
-      .sort((a, b) => (a.deadline! < b.deadline! ? -1 : 1))
-      .slice(0, 3)
-      .map((c) => ({ ...c, urgent: c.deadline! <= soon, days: daysBetween(today, c.deadline!) }))
+      if (c.received_at) continue
+      if (!c.paid && c.deadline) {
+        events.push({
+          key: `${c.id}-pay`, collect: c, kind: 'pay', date: c.deadline,
+          days: daysBetween(today, c.deadline), urgent: c.deadline <= soon,
+        })
+      }
+      if (c.arrives_by) {
+        events.push({
+          key: `${c.id}-arrive`, collect: c, kind: 'arrive', date: c.arrives_by,
+          days: daysBetween(today, c.arrives_by), urgent: c.arrives_by < today,
+        })
+      }
+    }
+    return events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(0, 4)
   }, [collects])
 
   // Bundles are excluded: their availability comes from component stock,
-  // and the components themselves already surface here.
+  // and the components themselves already surface here. Archived items are
+  // retired on purpose, so their stock no longer matters.
+  const threshold = settings.lowStockThreshold
   const lowStock = useMemo(() => {
     const bundleIds = new Set((rawBundles ?? []).map((b) => b.bundle_id))
     return (items ?? [])
-      .filter((i) => !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= 2)
+      .filter((i) => !i.archived && !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= threshold)
       .sort((a, b) => (a.stock_qty ?? 0) - (b.stock_qty ?? 0))
       .slice(0, 4)
-  }, [items, rawBundles])
+  }, [items, rawBundles, threshold])
+
+  const showBackupNudge = !settingsLoading && backupDue(settings.lastBackupAt, now)
 
   const recentOrders = useMemo(() => (orders ?? []).slice(0, 3), [orders])
 
@@ -246,7 +290,7 @@ export default function Dashboard() {
       icon={DAY_ICON[part]}
       tone={DAY_TONE[part]}
     >
-      <SignOutButton />
+      <SettingsLink />
     </PageHeader>
   )
 
@@ -328,7 +372,15 @@ export default function Dashboard() {
       {hasActions && (
         <div className="mb-3 grid grid-cols-2 gap-2">
           {stats.unpaid > 0 && (
-            <ActionCard label="unpaid orders" count={stats.unpaid} to="/orders?filter=unpaid" tone="bad" icon={HandCoins} index={0} />
+            <ActionCard
+              label="unpaid orders"
+              hint={stats.unpaidStale > 0 ? `${stats.unpaidStale} over a week` : undefined}
+              count={stats.unpaid}
+              to="/orders?filter=unpaid"
+              tone="bad"
+              icon={HandCoins}
+              index={0}
+            />
           )}
           {stats.toSend > 0 && (
             <ActionCard label="paid, not sent" count={stats.toSend} to="/orders?filter=to_send" tone="accent" icon={Send} index={1} />
@@ -337,6 +389,23 @@ export default function Dashboard() {
       )}
 
       <div className="mb-4 space-y-2">
+        {showBackupNudge && (
+          <Link
+            to={SETTINGS.to}
+            className="lift flex animate-pop items-center gap-3 rounded-card glass p-3.5"
+            style={{ animationDelay: '420ms' }}
+          >
+            <span className={`grid size-10 shrink-0 place-items-center rounded-[38%] ${TONE_BLOB.brand}`} aria-hidden>
+              <DownloadCloud size={19} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold">Time for a backup</span>
+              <span className="block truncate text-xs text-ink-muted">
+                {settings.lastBackupAt ? `Last one ${formatDate(settings.lastBackupAt)}` : 'You haven’t saved one yet'} — tap to download
+              </span>
+            </span>
+          </Link>
+        )}
         {lowStock.length > 0 && (
           <Card
             title={
@@ -408,41 +477,47 @@ export default function Dashboard() {
       </div>
 
       <section>
-        <h2 className="mb-2 font-display text-base">Upcoming deadlines</h2>
+        <h2 className="mb-2 font-display text-base">Collect dates</h2>
         {upcoming.length === 0 ? (
           <Card className="animate-pop">
-            <EmptyState icon={PartyPopper} tone="sun" message="All caught up!" hint="No collect deadlines coming up." />
+            <EmptyState icon={PartyPopper} tone="sun" message="All caught up!" hint="Nothing to pay for or wait on." />
           </Card>
         ) : (
           <div className="space-y-2">
-            {upcoming.map((c) => (
-              <Link
-                key={c.id}
-                to="/collects"
-                className="lift flex items-center justify-between gap-3 rounded-card glass p-3.5"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className={`grid size-10 shrink-0 place-items-center rounded-[38%] ${TONE_BLOB.sky}`} aria-hidden>
-                    <SECTIONS.collects.icon size={18} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{c.name}</p>
-                    <p className="truncate text-xs text-ink-muted">{c.vendor}</p>
+            {upcoming.map((e) => {
+              const KindIcon = e.kind === 'pay' ? Wallet : PackageCheck
+              return (
+                <Link
+                  key={e.key}
+                  to={`/collects?open=${e.collect.id}`}
+                  className="lift flex items-center justify-between gap-3 rounded-card glass p-3.5"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className={`grid size-10 shrink-0 place-items-center rounded-[38%] ${TONE_BLOB.sky}`} aria-hidden>
+                      <KindIcon size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{e.collect.name}</p>
+                      <p className="truncate text-xs text-ink-muted">
+                        {e.kind === 'pay' ? `Pay ${formatRub(e.collect.total_cost)}` : 'Arrives'}
+                        {e.collect.vendor ? ` · ${e.collect.vendor}` : ''}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-0.5">
-                  <span
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
-                      c.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/40 text-ink'
-                    }`}
-                  >
-                    <CalendarClock size={13} />
-                    {dueLabel(c.days)}
-                  </span>
-                  <span className="text-2xs text-ink-faint">{formatDate(c.deadline)}</span>
-                </div>
-              </Link>
-            ))}
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                        e.urgent ? 'bg-bad/10 text-bad' : 'bg-sun/40 text-ink'
+                      }`}
+                    >
+                      <CalendarClock size={13} />
+                      {e.days < 0 ? lateLabel(-e.days) : dueLabel(e.days)}
+                    </span>
+                    <span className="text-2xs text-ink-faint">{formatDate(e.date)}</span>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         )}
       </section>

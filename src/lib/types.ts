@@ -11,6 +11,8 @@ export interface Item {
   sale_price: number | null
   profit: number | null
   stock_qty: number | null
+  /** Hidden from the catalog and pickers, still linked from old orders (migration 010). */
+  archived?: boolean
   created_at: string
 }
 
@@ -38,6 +40,16 @@ export interface Order {
   delivery_details: string | null
   sent: boolean
   delivered: boolean
+  // Migration 010. Optional so the app still loads against a database that
+  // hasn't run it yet (the banner in Layout asks for it).
+  /** Stamped by the database when "paid" is ticked; null for orders paid before 010. */
+  paid_at?: string | null
+  /** Stamped by the database when "sent" is ticked; null for orders sent before 010. */
+  sent_at?: string | null
+  shipping_fee?: number | null
+  discount?: number | null
+  /** When false, the database keeps total_price = items + shipping − discount. */
+  total_manual?: boolean
   created_at: string
 }
 
@@ -61,8 +73,12 @@ export interface Collect {
   print_cost: number | null
   commission: number | null
   delivery_cost: number | null
+  /** Pay-by date. */
   deadline: string | null
+  /** When the run is expected to arrive (migration 010). */
+  arrives_by?: string | null
   paid: boolean
+  paid_at?: string | null
   total_cost: number | null
   cost_per_unit: number | null
   received_at: string | null

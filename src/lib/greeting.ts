@@ -35,3 +35,15 @@ export function dueLabel(days: number): string {
   if (days === 1) return 'tomorrow'
   return `in ${days} days`
 }
+
+/** "1 day late" / "4 days late" — for dates already past. */
+export function lateLabel(days: number): string {
+  return days === 1 ? '1 day late' : `${days} days late`
+}
+
+/** "today" / "yesterday" / "3 days ago" — for something that already happened. */
+export function agoLabel(days: number): string {
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  return `${days} days ago`
+}

@@ -1,12 +1,41 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { DatabaseZap, LogOut } from 'lucide-react'
 import { useSignOut } from '../hooks/useAuth'
+import { SCHEMA_VERSION, useSchemaVersion } from '../hooks/useSettings'
 import { haptic } from '../lib/haptics'
 import BrandMark from './BrandMark'
-import { SECTIONS } from './sections'
+import { SECTIONS, SETTINGS } from './sections'
 import { TONE_BLOB, type Tone } from './tones'
 
 const NAV = Object.values(SECTIONS)
+const SIDEBAR = [...NAV, SETTINGS]
+
+/**
+ * Migrations are pasted into Supabase by hand, so the code can run ahead of
+ * the database. Say so plainly instead of letting a missing column surface as
+ * a confusing save error.
+ */
+function SchemaBanner() {
+  const { data: version } = useSchemaVersion()
+  if (version === undefined || version >= SCHEMA_VERSION) return null
+  return (
+    <Link
+      to={SETTINGS.to}
+      className="glass glass-alert tap mb-4 flex items-center gap-3 rounded-card p-3.5 print:hidden"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-[38%] bg-bad/15 text-bad" aria-hidden>
+        <DatabaseZap size={19} />
+      </span>
+      <span className="min-w-0 text-sm">
+        <span className="block font-bold">Database update needed</span>
+        <span className="block text-xs text-ink-muted">
+          Run the supabase/migrations files numbered above {String(version).padStart(3, '0')} in the Supabase SQL
+          Editor, then reload. Some saves fail until then.
+        </span>
+      </span>
+    </Link>
+  )
+}
 
 // Pill behind the active mobile tab icon. Solid fills pair with their
 // `text-on-*` foreground (see CLAUDE.md); sky and peach have no on-* token,
@@ -40,7 +69,7 @@ export default function Layout() {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {NAV.map((n) => (
+          {SIDEBAR.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -79,6 +108,7 @@ export default function Layout() {
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
         <main key={section} className="mx-auto w-full max-w-4xl flex-1 animate-page-in px-4 pb-[calc(var(--spacing-nav)+env(safe-area-inset-bottom)+2rem)] pt-5 md:px-6 md:pb-10 md:pt-8">
+          <SchemaBanner />
           <Outlet />
         </main>
       </div>

@@ -1,6 +1,6 @@
 import type { Order, OrderItem } from './types'
 import { formatDate, formatRub } from './format'
-import { linesTotal, NO_FANDOM_LABEL, sortLinesByPrice, type FandomGroup } from './orderLines'
+import { groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice, type FandomGroup } from './orderLines'
 import { generateQrSvg } from './qrCode'
 
 /** Name lookup shared by both printouts — the catalog map, trimmed to what's used. */
@@ -31,6 +31,14 @@ export function statusParts(order: Pick<Order, 'paid' | 'sent' | 'delivered'>): 
     order.sent ? '✓ Sent' : '✗ Not sent',
     order.delivered ? '✓ Delivered' : '✗ Not delivered',
   ]
+}
+
+/** Shipping and discount lines for an order that has them (migration 010). */
+export function adjustmentParts(order: Pick<Order, 'shipping_fee' | 'discount'>): string[] {
+  const parts: string[] = []
+  if (order.shipping_fee) parts.push(`Shipping: +${formatRub(order.shipping_fee)}`)
+  if (order.discount) parts.push(`Discount: −${formatRub(order.discount)}`)
+  return parts
 }
 
 /** Header row for the four-column item table. */
@@ -113,6 +121,112 @@ export const ORDER_LIST_CSS = `
     .order-total { text-align: right; font-weight: bold; font-size: 13px; margin-top: 2px; }
     .no-items { color: #aaa; font-size: 11px; margin: 4px 0; }
 `
+
+/**
+ * The one-order printout. `lines` in print order; pass `groups` to print
+ * fandom headings (the on-screen grouping toggle), or null for a flat list.
+ */
+export function singleOrderPageHtml(
+  order: Order,
+  lines: OrderItem[],
+  catalog: PrintCatalog,
+  groups: FandomGroup[] | null,
+): string {
+  const customerName = order.telegram || order.customer_email || 'Order'
+  const extraInfo = [
+    order.delivery_method ? `<p><strong>Delivery:</strong> ${esc(order.delivery_method)}</p>` : '',
+    order.delivery_details ? `<p><strong>Address:</strong> ${esc(order.delivery_details)}</p>` : '',
+    order.customer_email ? `<p><strong>Email:</strong> ${esc(order.customer_email)}</p>` : '',
+    order.comment ? `<p><strong>Comment:</strong> ${esc(order.comment)}</p>` : '',
+  ].filter(Boolean).join('')
+
+  return printPageHtml(
+    `Order – ${customerName}`,
+    SINGLE_ORDER_CSS,
+    `<h1>${esc(customerName)}</h1>
+  <div class="date">${formatDate(order.created_at)}</div>
+  <div class="status">${statusParts(order).join('<span style="color:#ccc"> | </span>')}</div>
+  <table>
+    <thead>
+      ${ITEM_TABLE_HEAD}
+    </thead>
+    <tbody>${itemRowsHtml(lines, catalog, groups)}</tbody>
+  </table>
+  <div class="items-total">Items total: ${formatRub(linesTotal(lines))}</div>
+  ${adjustmentParts(order).map((a) => `<div class="items-total">${a}</div>`).join('')}
+  ${order.total_price != null ? `<div class="order-total">Order total: ${formatRub(order.total_price)}</div>` : ''}
+  ${extraInfo ? `<div class="info">${extraInfo}</div>` : ''}`,
+  )
+}
+
+/** Name + fandom lookup the list printout needs for rows and fandom headings. */
+export type ListPrintCatalog = ReadonlyMap<string, { name: string; fandom: string | null }>
+
+/** One order's block on the list printout. */
+export function orderListCardHtml(
+  order: Order,
+  lines: OrderItem[],
+  catalog: ListPrintCatalog,
+  groupByFandom: boolean,
+): string {
+  const groups = groupByFandom ? groupLinesByFandom(lines, catalog) : []
+  const itemRows = itemRowsHtml(sortLinesByPrice(lines), catalog, groups.length > 1 ? groups : null)
+
+  const extraInfo = [
+    order.delivery_method ? `<span class="badge">${esc(order.delivery_method)}</span>` : '',
+    order.delivery_details ? `<div class="meta">${esc(order.delivery_details)}</div>` : '',
+    order.comment ? `<div class="meta comment">Note: ${esc(order.comment)}</div>` : '',
+  ].filter(Boolean).join('')
+
+  const adjustments = adjustmentParts(order)
+
+  return `<div class="order">
+            <div class="order-header">
+              <h2>${esc(order.telegram || order.customer_email || 'Order')}</h2>
+              ${extraInfo}
+            </div>
+            <div class="status">${statusParts(order).join(' &nbsp;·&nbsp; ')}</div>
+            ${lines.length > 0
+              ? `<table>
+                  <thead>${ITEM_TABLE_HEAD}</thead>
+                  <tbody>${itemRows}</tbody>
+                </table>
+                <div class="items-total">Items total: ${formatRub(linesTotal(lines))}</div>`
+              : '<p class="no-items">No items added</p>'
+            }
+            ${adjustments.map((a) => `<div class="items-total">${a}</div>`).join('')}
+            ${order.total_price != null ? `<div class="order-total">Order total: ${formatRub(order.total_price)}</div>` : ''}
+          </div>`
+}
+
+/** The whole "print the filtered orders" document. */
+export function orderListPageHtml({
+  orders,
+  linesByOrder,
+  catalog,
+  groupByFandom,
+  heading,
+  printedOn,
+}: {
+  orders: Order[]
+  linesByOrder: ReadonlyMap<string, OrderItem[]>
+  catalog: ListPrintCatalog
+  groupByFandom: boolean
+  /** e.g. "To send · сдэк" — the filter the list was printed with. */
+  heading: string
+  printedOn: string
+}): string {
+  const cards = orders
+    .map((o) => orderListCardHtml(o, linesByOrder.get(o.id) ?? [], catalog, groupByFandom))
+    .join('')
+  const count = `${orders.length} order${orders.length !== 1 ? 's' : ''}`
+  return printPageHtml(
+    `Orders – ${heading} – ${printedOn}`,
+    ORDER_LIST_CSS,
+    `<h1>Orders · ${esc(heading)} · ${printedOn} · ${count}</h1>
+  ${cards}`,
+  )
+}
 
 /** The full print document. `title` is escaped here; `body` is already HTML. */
 export function printPageHtml(title: string, css: string, body: string): string {
@@ -206,7 +320,10 @@ function receiptItemHtml(line: OrderItem, catalog: PrintCatalog): string {
 
 /** Builds the receipt body HTML — pass to `printPageHtml` with `RECEIPT_CSS`. */
 export function receiptBodyHtml(
-  order: Pick<Order, 'id' | 'telegram' | 'customer_email' | 'total_price' | 'delivery_method' | 'paid' | 'created_at'>,
+  order: Pick<
+    Order,
+    'id' | 'telegram' | 'customer_email' | 'total_price' | 'delivery_method' | 'paid' | 'created_at' | 'shipping_fee' | 'discount'
+  >,
   lines: OrderItem[],
   catalog: PrintCatalog,
 ): string {
@@ -236,6 +353,7 @@ export function receiptBodyHtml(
   <ul class="items">${itemsHtml}</ul>
   <div class="orn"><span>&#9670;</span></div>
   <div class="summary">${itemCount} item${itemCount !== 1 ? 's' : ''} &middot; ${unitCount} unit${unitCount !== 1 ? 's' : ''}</div>
+  ${adjustmentParts(order).map((a) => `<div class="summary">${a}</div>`).join('')}
   <div class="total"><span class="label">Total</span><span class="amount">${total}</span></div>
   ${deliveryHtml ? `<div class="orn"><span>&#9670;</span></div>${deliveryHtml}` : ''}
   <div class="thanks">Спасибо за покупку!</div>
@@ -244,6 +362,15 @@ export function receiptBodyHtml(
   <div class="receipt-id">${shortId}</div>
   <div class="bottom-orn">&#9670; &middot; &#9670; &middot; &#9670;</div>
 </div>`
+}
+
+/** The full receipt document. */
+export function receiptPageHtml(order: Order, lines: OrderItem[], catalog: PrintCatalog): string {
+  return printPageHtml(
+    `Receipt – ${order.telegram || order.customer_email || 'Order'}`,
+    RECEIPT_CSS,
+    receiptBodyHtml(order, lines, catalog),
+  )
 }
 
 /** Opens the document in a new tab and triggers the browser's print dialog. */

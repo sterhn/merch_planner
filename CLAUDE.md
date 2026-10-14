@@ -44,7 +44,15 @@ Report how many commits behind the branch was. Never build on a stale base — a
 
 All of build, test, and lint must pass before pushing. Deploys to GitHub Pages happen from `main`.
 
-Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each new file into the Supabase SQL Editor by hand. If a change depends on a new migration, say so loudly in the PR/summary.
+Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each new file into the Supabase SQL Editor by hand. If a change depends on a new migration, say so loudly in the PR/summary. Every new migration must end with `insert into schema_migrations (version) values (N) on conflict do nothing;` and bump `SCHEMA_VERSION` in `src/hooks/useSettings.ts` to match — `Layout` shows a "Database update needed" banner while the database is behind. New columns read by the app should be optional in `src/lib/types.ts` (with a sensible fallback) so the app still loads before the owner runs the migration.
+
+Data rules the database enforces (migrations 003/009/010), so the app doesn't duplicate them:
+- Stock: marking an order sent takes its items off stock; un-sending, deleting the order, or editing lines on a sent order moves stock to match (bundles via their components).
+- Order totals: `total_price` = items + `shipping_fee` − `discount`, recomputed on every line change, unless `total_manual`. Line mutations must invalidate `orders` (and `items`).
+- `orders.paid_at`/`sent_at` and `collects.paid_at` are stamped by triggers; revenue counts in the paid month (`paid_at ?? created_at`).
+- Collects have two dates: `deadline` = pay by, `arrives_by` = expected arrival.
+- Bundle parts and collect positions are saved through the `save_bundle_items` / `save_collect_items` RPCs (one transaction), never delete-then-insert from the client.
+- Items are archived (`archived`), not deleted, in normal use; pickers and low-stock skip archived items.
 
 ## Design system pointers
 
@@ -57,7 +65,10 @@ Migrations in `supabase/migrations/` are NOT auto-applied: the owner pastes each
 - `SwipeableRow` ignores mouse pointers, so any swipe-only action also needs a visible button fallback for desktop.
 - Haptics: `src/lib/haptics.ts` — call `haptic()` on key taps/toggles
 - Celebration: `src/lib/confetti.ts` `celebrate(el?)` for happy moments (order status advanced, collect received). `StatusBadge` fires it when switched on. Respects reduced motion.
-- Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there.
+- Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there. `/collects?open=<id>` opens one collect (dashboard dates and expense rows link there).
+- Big editors live beside their page: `src/pages/order/` (details form, line sheets), `src/pages/catalog/ItemEditor.tsx`, `src/pages/collects/CollectEditor.tsx`. Editors mount only while open and start their form from props (`key` by id), instead of a parent holding the form state.
+- Settings (`/settings`, `SETTINGS` in `sections.ts`) is outside the 5-tab mobile bar: sidebar on desktop, gear in the dashboard header on mobile. Preferences live in the `app_settings` table (`useSettings`); list filters live in `src/lib/viewState.ts` (localStorage).
+- Print/receipt HTML is built in `src/lib/printOrder.ts` (tested), not in pages.
 - Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
 - Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. Whole-number counts stay `type="number" inputMode="numeric"`.
 - Inputs use 16px text (`text-base`) so iOS doesn't zoom on focus

@@ -113,7 +113,7 @@ async function main() {
   // --- 3. Orders (matched against current Supabase catalog) ---
   const existingItems = dryRun
     ? []
-    : (await db!.from('items').select('id, name').then(({ data, error }) => { if (error) throw error; return data! }))
+    : (await db!.from('items').select('id, name, stock_qty').then(({ data, error }) => { if (error) throw error; return data! }))
 
   const itemLookup = new Map(existingItems.map((i) => [normalizeName(i.name), i.name]))
   const idByName = new Map(existingItems.map((i) => [i.name, i.id]))
@@ -206,7 +206,12 @@ async function main() {
 
   for (const o of orders) {
     const { lines, ...orderValues } = o
-    const { data: inserted, error: orderErr } = await db!.from('orders').insert(orderValues).select('id').single()
+    // A total from the sheet is kept as typed, not recomputed from the lines.
+    const { data: inserted, error: orderErr } = await db!
+      .from('orders')
+      .insert({ ...orderValues, total_manual: orderValues.total_price != null })
+      .select('id')
+      .single()
     if (orderErr) throw orderErr
     if (lines.length > 0) {
       const { error: linesErr } = await db!.from('order_items').insert(
@@ -223,6 +228,11 @@ async function main() {
     }
   }
   console.log(`Inserted ${orders.length} orders with line items`)
+
+  // Lines added to a sent order take stock off (migration 010), but the
+  // catalog's stock is already net of these historic sales — put it back.
+  const { error: stockErr } = await db!.from('items').upsert(existingItems.map(({ id, name, stock_qty }) => ({ id, name, stock_qty })))
+  if (stockErr) throw stockErr
   console.log('Import complete ✔')
 }
 

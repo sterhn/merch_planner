@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
-import { formatDate, formatRub, todayISO } from '../lib/format'
+import { formatDate, formatRub, localISODate, todayISO } from '../lib/format'
+import { agoLabel, daysBetween } from '../lib/greeting'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from '../hooks/useConfirm'
 import FilterChip from '../components/FilterChip'
@@ -17,11 +18,10 @@ import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import { celebrate } from '../lib/confetti'
 import SearchInput from '../components/SearchInput'
 import SwipeableRow, { type SwipeAction } from '../components/SwipeableRow'
-import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
+import { AddButton, Field, IconButton, inputClass, PrimaryButton, SecondaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
-import { groupLinesByFandom, linesTotal, sortLinesByPrice } from '../lib/orderLines'
-import { esc, ITEM_TABLE_HEAD, itemRowsHtml, openPrintWindow, ORDER_LIST_CSS, printPageHtml, statusParts } from '../lib/printOrder'
+import { openPrintWindow, orderListPageHtml } from '../lib/printOrder'
 import {
   fandomGrouping,
   flushViewState,
@@ -32,6 +32,9 @@ import {
 } from '../lib/viewState'
 
 type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
+
+/** Unpaid this long, an order row flags its age. */
+const UNPAID_NUDGE_DAYS = 7
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'to_send', label: 'To send' },
@@ -83,6 +86,42 @@ export default function Orders() {
     )
   }
 
+  // Packing day: print the "To send" list, pack everything, then mark the lot
+  // sent in one go instead of a swipe per order.
+  const bulkUpdate = useMutation({
+    mutationFn: async ({ ids, values }: { ids: string[]; values: Partial<Order> }) => {
+      const { error } = await supabase.from('orders').update(values).in('id', ids)
+      if (error) throw error
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['orders'] })
+      void qc.invalidateQueries({ queryKey: ['items'] })
+    },
+  })
+
+  function setStatusMany(ids: string[], values: Partial<Order>) {
+    const set = new Set(ids)
+    qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
+      Array.isArray(data) ? data.map((o) => (set.has(o.id) ? { ...o, ...values } : o)) : data,
+    )
+    bulkUpdate.mutate({ ids, values })
+  }
+
+  function markAllSent(ids: string[]) {
+    confirm(
+      `Mark all ${ids.length} as sent? Their items come off catalog stock.`,
+      () => {
+        celebrate()
+        setStatusMany(ids, { sent: true })
+        showToast(`${ids.length} order${ids.length !== 1 ? 's' : ''} marked sent`, {
+          label: 'Undo',
+          onClick: () => setStatusMany(ids, { sent: false }),
+        })
+      },
+      { label: 'Mark sent', tone: 'primary' },
+    )
+  }
+
   // A swipe is easy to trigger by accident, and "sent" moves catalog stock, so
   // every advance offers an Undo. Un-sending restores stock (DB trigger).
   function advanceStatus(id: string, who: string, flag: 'paid' | 'sent' | 'delivered') {
@@ -113,6 +152,7 @@ export default function Orders() {
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
   const [printLoading, setPrintLoading] = useState(false)
   const [resumeId, setResumeId] = useState(() => lastOrder()?.id ?? null)
+  const [today] = useState(todayISO)
 
   const restoredScroll = useRef(false)
 
@@ -202,65 +242,24 @@ export default function Orders() {
       const catalogMap = new Map<string, { name: string; fandom: string | null }>()
       for (const item of catalog ?? []) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
 
-      // Printouts follow the grouping toggle set on the order screen.
-      const groupByFandom = fandomGrouping()
-      const printedOn = formatDate(todayISO())
-
-      const itemsByOrder = new Map<string, OrderItem[]>()
-      for (const item of (allItems ?? []) as OrderItem[]) {
-        if (!itemsByOrder.has(item.order_id)) itemsByOrder.set(item.order_id, [])
-        itemsByOrder.get(item.order_id)!.push(item)
+      const linesByOrder = new Map<string, OrderItem[]>()
+      for (const line of (allItems ?? []) as OrderItem[]) {
+        if (!linesByOrder.has(line.order_id)) linesByOrder.set(line.order_id, [])
+        linesByOrder.get(line.order_id)!.push(line)
       }
 
-      const ordersHtml = filtered
-        .map((order) => {
-          const items = itemsByOrder.get(order.id) ?? []
-          const total = linesTotal(items)
-
-          const groups = groupByFandom ? groupLinesByFandom(items, catalogMap) : []
-          const itemRows = itemRowsHtml(
-            sortLinesByPrice(items),
-            catalogMap,
-            groups.length > 1 ? groups : null,
-          )
-
-          const extraInfo = [
-            order.delivery_method ? `<span class="badge">${esc(order.delivery_method)}</span>` : '',
-            order.delivery_details ? `<div class="meta">${esc(order.delivery_details)}</div>` : '',
-            order.comment ? `<div class="meta comment">Note: ${esc(order.comment)}</div>` : '',
-          ].filter(Boolean).join('')
-
-          return `<div class="order">
-            <div class="order-header">
-              <h2>${esc(order.telegram || order.customer_email || 'Order')}</h2>
-              ${extraInfo}
-            </div>
-            <div class="status">${statusParts(order).join(' &nbsp;·&nbsp; ')}</div>
-            ${items.length > 0
-              ? `<table>
-                  <thead>${ITEM_TABLE_HEAD}</thead>
-                  <tbody>${itemRows}</tbody>
-                </table>
-                <div class="items-total">Items total: ${formatRub(total)}</div>`
-              : '<p class="no-items">No items added</p>'
-            }
-            ${order.total_price != null ? `<div class="order-total">Order total: ${formatRub(order.total_price)}</div>` : ''}
-          </div>`
-        })
-        .join('')
-
-      const filterLabel =
-        filter === 'to_send' ? 'To send' : filter === 'sent' ? 'Sent' : filter === 'unpaid' ? 'Unpaid' : filter === 'done' ? 'Done' : 'All'
-      const deliveryLabel = deliveryFilter ? ` · ${deliveryFilter}` : ''
-
-      const html = printPageHtml(
-        `Orders – ${filterLabel}${deliveryLabel} – ${printedOn}`,
-        ORDER_LIST_CSS,
-        `<h1>Orders · ${filterLabel}${esc(deliveryLabel)} · ${printedOn} · ${filtered.length} order${filtered.length !== 1 ? 's' : ''}</h1>
-  ${ordersHtml}`,
+      const filterLabel = FILTERS.find((f) => f.key === filter)?.label ?? 'All'
+      openPrintWindow(
+        orderListPageHtml({
+          orders: filtered,
+          linesByOrder,
+          catalog: catalogMap,
+          // Printouts follow the grouping toggle set on the order screen.
+          groupByFandom: fandomGrouping(),
+          heading: deliveryFilter ? `${filterLabel} · ${deliveryFilter}` : filterLabel,
+          printedOn: formatDate(todayISO()),
+        }),
       )
-
-      openPrintWindow(html)
     } finally {
       setPrintLoading(false)
     }
@@ -367,6 +366,18 @@ export default function Orders() {
         </div>
       )}
 
+      {filter === 'to_send' && filtered.length > 0 && (
+        <SecondaryButton
+          tone="good"
+          className="mb-3 w-full"
+          onClick={() => markAllSent(filtered.map((o) => o.id))}
+          disabled={bulkUpdate.isPending}
+        >
+          <Send size={15} />
+          Mark all {filtered.length} as sent
+        </SecondaryButton>
+      )}
+
       <QueryState
         isLoading={isLoading}
         isError={isError}
@@ -411,6 +422,13 @@ export default function Orders() {
             confirm('Delete this order?', () => remove.mutate(o.id))
           }
           const AdvanceIcon = advance?.icon
+          // How long it's been waiting, where that's worth a glance.
+          const unpaidDays = o.paid ? 0 : daysBetween(localISODate(o.created_at), today)
+          const age = !o.paid && unpaidDays >= UNPAID_NUDGE_DAYS
+            ? { text: `unpaid ${unpaidDays} days`, bad: true }
+            : o.sent && !o.delivered && o.sent_at
+              ? { text: `sent ${agoLabel(daysBetween(localISODate(o.sent_at), today))}`, bad: false }
+              : null
           return (
             <SwipeableRow
               key={o.id}
@@ -434,7 +452,10 @@ export default function Orders() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{who}</p>
-                    <p className="truncate text-xs text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>
+                    <p className="truncate text-xs text-ink-muted">
+                      {o.delivery_method ?? 'no delivery method'}
+                      {age && <span className={age.bad ? 'font-bold text-bad' : ''}> · {age.text}</span>}
+                    </p>
                     <div className="mt-1.5">
                       <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
                     </div>

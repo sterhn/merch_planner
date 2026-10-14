@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Trash2,
   Store,
@@ -7,11 +8,12 @@ import {
   MoreHorizontal,
   Printer,
   Receipt,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react'
 import type { Expense, ExpenseFeedRow } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
-import { useDelete, useInsert, useList } from '../hooks/useTable'
+import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, parseMoney, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
 import { useConfirm } from '../hooks/useConfirm'
@@ -21,7 +23,8 @@ import QueryState from '../components/QueryState'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SwipeableRow from '../components/SwipeableRow'
-import { AddButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
+import { AddButton, DangerButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
+import { haptic } from '../lib/haptics'
 
 const CATEGORY_LABELS: Record<string, string> = {
   shelf_rent: 'Shelf rent',
@@ -46,17 +49,44 @@ const NEW_CATEGORIES = EXPENSE_CATEGORIES.filter((c) => c !== 'shelf_rent')
 export default function Expenses() {
   const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
+  const update = useUpdate<Expense>('expenses', ['expense_feed'])
   const remove = useDelete('expenses', ['expense_feed'])
   const { confirm, element: confirmSheet } = useConfirm()
 
   const launchNew = useLaunchFlag()
-  const [adding, setAdding] = useState(launchNew)
+  // 'new', or the manual expense being edited.
+  const [editing, setEditing] = useState<ExpenseFeedRow | 'new' | null>(launchNew ? 'new' : null)
+  // The add form keeps date and category between entries (see save); editing
+  // borrows the form and puts the draft back when it's done.
   const [form, setForm] = useState({
     date: todayISO(),
     category: 'other' as Expense['category'],
     description: '',
     amount: '',
   })
+  const [addDraft, setAddDraft] = useState(form)
+
+  function openAdd() {
+    setForm(addDraft)
+    setEditing('new')
+  }
+
+  function openEdit(row: ExpenseFeedRow) {
+    haptic()
+    if (editing === null || editing === 'new') setAddDraft(form)
+    setForm({
+      date: row.date,
+      category: row.category as Expense['category'],
+      description: row.description ?? '',
+      amount: String(row.amount),
+    })
+    setEditing(row)
+  }
+
+  function closeEditor() {
+    if (editing !== 'new') setForm(addDraft)
+    setEditing(null)
+  }
 
   const byMonth = useMemo(() => {
     const groups = new Map<string, { rows: ExpenseFeedRow[]; total: number }>()
@@ -85,23 +115,35 @@ export default function Expenses() {
 
   function save(e: React.FormEvent) {
     e.preventDefault()
-    insert.mutate(
-      {
-        date: form.date,
-        category: form.category,
-        description: form.description || null,
-        amount: parseMoney(form.amount) ?? 0,
+    const values = {
+      date: form.date,
+      category: form.category,
+      description: form.description || null,
+      amount: parseMoney(form.amount) ?? 0,
+    }
+    if (editing !== null && editing !== 'new') {
+      update.mutate({ id: editing.id, values }, { onSuccess: closeEditor })
+      return
+    }
+    insert.mutate(values, {
+      onSuccess: () => {
+        setEditing(null)
+        // Keep date and category — expenses tend to be logged in batches
+        // (a receipt at a time) — but never reopen on the last amount.
+        const next = { ...form, description: '', amount: '' }
+        setForm(next)
+        setAddDraft(next)
       },
-      {
-        onSuccess: () => {
-          setAdding(false)
-          // Keep date and category — expenses tend to be logged in batches
-          // (a receipt at a time) — but never reopen on the last amount.
-          setForm((f) => ({ ...f, description: '', amount: '' }))
-        },
-      },
-    )
+    })
   }
+
+  const editingRow = editing !== null && editing !== 'new' ? editing : null
+  // The archived shelf's rent isn't offered for new rows, but an old one being
+  // edited keeps its category.
+  const categoryOptions: readonly Expense['category'][] =
+    editingRow && !(NEW_CATEGORIES as readonly string[]).includes(form.category)
+      ? [form.category, ...NEW_CATEGORIES]
+      : NEW_CATEGORIES
 
   function confirmDelete(id: string) {
     confirm('Delete this expense?', () => remove.mutate(id))
@@ -110,7 +152,7 @@ export default function Expenses() {
   return (
     <div>
       <PageHeader title="Expenses" icon={SECTIONS.expenses.icon} tone={SECTIONS.expenses.tone}>
-        <AddButton onClick={() => setAdding(true)}>Add expense</AddButton>
+        <AddButton onClick={openAdd}>Add expense</AddButton>
       </PageHeader>
 
       <QueryState
@@ -135,15 +177,14 @@ export default function Expenses() {
           <div className="space-y-2">
             {rows.map((row) => {
               const CategoryIcon = CATEGORY_ICONS[row.category] ?? MoreHorizontal
-              const content = (
-                <div className="flex items-center gap-3 rounded-card glass p-3.5">
+              const label = row.description || CATEGORY_LABELS[row.category] || row.category
+              const body = (
+                <>
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-[38%] bg-peach/15 text-peach">
                     <CategoryIcon size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
-                      {row.description || CATEGORY_LABELS[row.category] || row.category}
-                    </p>
+                    <p className="truncate text-sm font-semibold">{label}</p>
                     <p className="text-xs text-ink-muted">
                       {formatDate(row.date)} · {CATEGORY_LABELS[row.category] ?? row.category}
                       {row.source === 'collect' && (
@@ -153,21 +194,23 @@ export default function Expenses() {
                       )}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span className="font-display text-sm">{formatRub(row.amount)}</span>
-                    {row.source === 'manual' && (
-                      <IconButton
-                        icon={Trash2}
-                        size={10}
-                        tone="danger"
-                        label={`Delete ${row.description || CATEGORY_LABELS[row.category] || row.category}`}
-                        onClick={() => confirmDelete(row.id)}
-                      />
-                    )}
-                  </div>
-                </div>
+                  <span className="shrink-0 font-display text-sm">{formatRub(row.amount)}</span>
+                </>
               )
-              return row.source === 'manual' ? (
+              // Collect costs are edited on the collect itself — the row links there.
+              if (row.source === 'collect') {
+                return (
+                  <Link
+                    key={`${row.source}-${row.id}`}
+                    to={`/collects?open=${row.id}`}
+                    className="lift flex items-center gap-3 rounded-card glass p-3.5"
+                  >
+                    {body}
+                    <ChevronRight size={16} className="-mr-1 shrink-0 text-ink-faint" />
+                  </Link>
+                )
+              }
+              return (
                 <SwipeableRow
                   key={`${row.source}-${row.id}`}
                   right={{
@@ -177,17 +220,33 @@ export default function Expenses() {
                     onAction: () => confirmDelete(row.id),
                   }}
                 >
-                  {content}
+                  <div className="flex items-center rounded-card glass">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(row)}
+                      aria-label={`Edit ${label}`}
+                      className="tap flex min-w-0 flex-1 items-center gap-3 p-3.5 text-left"
+                    >
+                      {body}
+                    </button>
+                    {/* SwipeableRow ignores mouse pointers, so desktop needs a visible delete. */}
+                    <IconButton
+                      icon={Trash2}
+                      size={10}
+                      tone="danger"
+                      label={`Delete ${label}`}
+                      className="mr-2 hidden md:grid"
+                      onClick={() => confirmDelete(row.id)}
+                    />
+                  </div>
                 </SwipeableRow>
-              ) : (
-                <div key={`${row.source}-${row.id}`}>{content}</div>
               )
             })}
           </div>
         </section>
       ))}
 
-      <Modal title="Add expense" open={adding} onClose={() => setAdding(false)}>
+      <Modal title={editingRow ? 'Edit expense' : 'Add expense'} open={editing !== null} onClose={closeEditor}>
         <form onSubmit={save}>
           <Field label="Date">
             <input className={inputClass} type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
@@ -198,7 +257,7 @@ export default function Expenses() {
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value as Expense['category'] })}
             >
-              {NEW_CATEGORIES.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={c} value={c}>
                   {CATEGORY_LABELS[c]}
                 </option>
@@ -213,9 +272,20 @@ export default function Expenses() {
           <Field label="Amount ₽">
             <input className={inputClass} type="text" inputMode="decimal" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </Field>
-          <PrimaryButton type="submit" disabled={insert.isPending}>
+          <PrimaryButton type="submit" disabled={insert.isPending || update.isPending}>
             Save
           </PrimaryButton>
+          {editingRow && (
+            <div className="mt-2">
+              <DangerButton
+                onClick={() =>
+                  confirm('Delete this expense?', () => remove.mutate(editingRow.id, { onSuccess: closeEditor }))
+                }
+              >
+                Delete
+              </DangerButton>
+            </div>
+          )}
         </form>
       </Modal>
 
