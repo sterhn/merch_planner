@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { OrderItem } from './types'
-import { esc, itemRowsHtml, ORDER_LIST_CSS, printPageHtml, RECEIPT_CSS, receiptBodyHtml, SINGLE_ORDER_CSS, statusParts } from './printOrder'
+import type { Order, OrderItem } from './types'
+import { formatRub } from './format'
+import {
+  adjustmentParts,
+  esc,
+  itemRowsHtml,
+  ORDER_LIST_CSS,
+  orderListPageHtml,
+  printPageHtml,
+  RECEIPT_CSS,
+  receiptBodyHtml,
+  SINGLE_ORDER_CSS,
+  singleOrderPageHtml,
+  statusParts,
+} from './printOrder'
 
 function line(id: string, item_id: string | null, unit_price: number | null, qty = 1): OrderItem {
   return { id, item_id, name_text: null, unit_price, qty } as OrderItem
@@ -179,5 +192,88 @@ describe('receiptBodyHtml', () => {
     expect(RECEIPT_CSS).toContain('.item-dots')
     expect(RECEIPT_CSS).toContain('.total')
     expect(RECEIPT_CSS).toContain('.qr')
+  })
+})
+
+describe('adjustmentParts', () => {
+  it('lists shipping and discount only when set', () => {
+    expect(adjustmentParts({ shipping_fee: null, discount: null })).toEqual([])
+    expect(adjustmentParts({ shipping_fee: 300, discount: 0 })).toEqual(['Shipping: +' + formatRub(300)])
+    expect(adjustmentParts({ shipping_fee: undefined, discount: 50 })).toEqual(['Discount: −' + formatRub(50)])
+  })
+
+  it('appear on the receipt', () => {
+    const html = receiptBodyHtml({ ...receiptOrder, shipping_fee: 300 }, [], catalog)
+    expect(html).toContain('Shipping: +' + formatRub(300))
+  })
+})
+
+describe('orderListPageHtml', () => {
+  const listCatalog = new Map([
+    ['a', { name: 'Стикер', fandom: 'kdj' }],
+    ['b', { name: 'Fish & Chips <deluxe>', fandom: 'tgcf' }],
+  ])
+  const order = (id: string, extra: Partial<Order> = {}) =>
+    ({ id, telegram: `@${id}`, paid: true, sent: false, delivered: false, total_price: 700, ...extra }) as Order
+
+  it('prints one block per order with its lines, escaped', () => {
+    const html = orderListPageHtml({
+      orders: [order('one', { comment: 'a & b' }), order('two')],
+      linesByOrder: new Map([['one', [line('1', 'b', 200)]]]),
+      catalog: listCatalog,
+      groupByFandom: false,
+      heading: 'To send · сдэк',
+      printedOn: '14.10.2026',
+    })
+    expect(html.match(/class="order"/g)).toHaveLength(2)
+    expect(html).toContain('Orders · To send · сдэк · 14.10.2026 · 2 orders')
+    expect(html).toContain('Fish &amp; Chips &lt;deluxe&gt;')
+    expect(html).toContain('Note: a &amp; b')
+    expect(html).toContain('No items added')
+  })
+
+  it('groups by fandom only when the order spans several', () => {
+    const args = {
+      orders: [order('one')],
+      catalog: listCatalog,
+      groupByFandom: true,
+      heading: 'All',
+      printedOn: '14.10.2026',
+    }
+    const mixed = orderListPageHtml({ ...args, linesByOrder: new Map([['one', [line('1', 'a', 100), line('2', 'b', 200)]]]) })
+    expect(mixed).toContain('class="group"')
+    const single = orderListPageHtml({ ...args, linesByOrder: new Map([['one', [line('1', 'a', 100)]]]) })
+    expect(single).not.toContain('class="group"')
+  })
+
+  it('shows shipping and discount above the order total', () => {
+    const html = orderListPageHtml({
+      orders: [order('one', { shipping_fee: 300, discount: 100 })],
+      linesByOrder: new Map(),
+      catalog: listCatalog,
+      groupByFandom: false,
+      heading: 'All',
+      printedOn: '14.10.2026',
+    })
+    expect(html.indexOf('Shipping: +' + formatRub(300))).toBeLessThan(html.indexOf('Order total'))
+    expect(html).toContain('Discount: −' + formatRub(100))
+  })
+})
+
+describe('singleOrderPageHtml', () => {
+  const order = {
+    id: 'x', telegram: '@me & you', customer_email: null, paid: true, sent: true, delivered: false,
+    total_price: 750, shipping_fee: 300, discount: null, delivery_method: 'почта',
+    delivery_details: '<addr>', comment: null, created_at: '2026-01-15T12:00:00Z',
+  } as Order
+
+  it('prints items, adjustments, total and escaped details', () => {
+    const html = singleOrderPageHtml(order, [line('1', 'a', 150, 3)], catalog, null)
+    expect(html).toContain('<h1>@me &amp; you</h1>')
+    expect(html).toContain('Items total: ' + formatRub(450))
+    expect(html).toContain('Shipping: +' + formatRub(300))
+    expect(html).toContain('Order total: ' + formatRub(750))
+    expect(html).toContain('&lt;addr&gt;')
+    expect(html).toContain(SINGLE_ORDER_CSS)
   })
 })

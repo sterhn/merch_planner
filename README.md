@@ -1,6 +1,6 @@
 # Merch Planner
 
-A small web app for tracking a merch shop: **orders, catalog, collects (production runs), shelf (consignment), and expenses**. Works on phone and laptop — same data everywhere.
+A small web app for tracking a merch shop: **orders, catalog, collects (production runs), and expenses**. Works on phone and laptop — same data everywhere.
 
 - Frontend: React + Vite, hosted free on **GitHub Pages**
 - Data + login: **Supabase** (free tier)
@@ -23,7 +23,7 @@ A small web app for tracking a merch shop: **orders, catalog, collects (producti
 3. You should see "Success. No rows returned".
 4. Repeat for each remaining file in [`supabase/migrations/`](supabase/migrations/) in numeric order (`002` onwards). Each file starts with a comment saying what it adds.
 
-> **Already set up earlier?** Only run the migration files you haven't run yet, in numeric order.
+> **Already set up earlier?** Only run the migration files you haven't run yet, in numeric order. From migration 010 on, the app knows which ones you've run: if the database is behind, a red **"Database update needed"** banner tells you which files to paste.
 
 ### 3. Create your login & lock the door
 
@@ -72,14 +72,20 @@ Open **https://sterhn.github.io/merch_planner/** in the browser, log in, then us
 
 | Section | What it's for |
 |---|---|
-| **Dashboard** | Revenue vs expenses, unpaid/unsent counts, upcoming collect deadlines |
-| **Orders** | Pre-orders: contact, items, total, paid → sent → delivered, delivery method & address |
-| **Catalog** | All your merch with cost, price, auto-profit, and stock |
-| **Collects** | Production runs: qty, costs, deadline, paid; total & per-unit cost auto-computed |
-| **Shelf** | Consignment positions: sent / sold / remaining, income, "Log rent" button |
-| **Expenses** | Manual expense log + paid collects shown automatically ("from collects") |
+| **Dashboard** | Revenue vs expenses (counted in the month an order was paid), unpaid/unsent counts, collect pay-by and arrival dates, low stock, backup reminder |
+| **Orders** | Pre-orders: contact, items, shipping & discount, paid → sent → delivered, delivery method & address. "Mark all as sent" on the To send list |
+| **Catalog** | All your merch with cost, price, auto-profit, and stock. Archive items you no longer sell |
+| **Collects** | Production runs: costs, pay-by and arrives-by dates, paid; total & per-unit cost auto-computed |
+| **Expenses** | Manual expense log (tap to edit) + paid collects shown automatically ("from collects") |
+| **Settings** | Download a backup, low-stock alert level, database version, sign out |
 
-Marking an order **sent** automatically decreases catalog stock for its items (and restores it if you un-mark sent). Items added to an order *after* it was already marked sent don't adjust stock.
+An order's **total** is worked out for you: items + shipping − discount. Tick "Set total by hand" on the order to type your own instead.
+
+Marking an order **sent** decreases catalog stock for its items (and restores it if you un-mark sent). Adding, removing or changing items on an order that's already sent adjusts stock too.
+
+**Archive vs delete:** archiving hides an item from the catalog and pickers but keeps it on old orders and collects. Delete only things you added by mistake.
+
+(The consignment shelf was retired in Aug 2026 — its history still counts towards revenue on the dashboard.)
 
 The app is a PWA: after the first visit it loads instantly and shows your latest cached data even offline (changes still need a connection).
 
@@ -89,9 +95,25 @@ The app is a PWA: after the first visit it loads instantly and shows your latest
 cp .env.example .env.local   # fill in your Supabase URL + anon key
 npm install
 npm run dev                  # local dev server
-npm test                     # parser unit tests
+npm test                     # unit tests
 npm run build                # production build
 ```
+
+### Backup and restore
+
+**Settings → Download backup** saves every table as one JSON file (photos stay in Supabase storage). The dashboard reminds you when the last backup is over 30 days old.
+
+To put a backup back (uses the service_role key — keep it local):
+
+```bash
+npx tsx scripts/restore-backup.ts merch-planner-backup-2026-10-14.json --dry-run   # see what's in it
+
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+npx tsx scripts/restore-backup.ts merch-planner-backup-2026-10-14.json
+```
+
+Rows are written back by id; anything created after the backup is left alone.
 
 ### Database health check
 

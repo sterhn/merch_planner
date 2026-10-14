@@ -248,7 +248,7 @@ async function main() {
   }
 
   // Insert catalog and build name -> id map
-  const { data: insertedItems, error: itemsErr } = await db.from('items').insert(itemRows).select('id, name')
+  const { data: insertedItems, error: itemsErr } = await db.from('items').insert(itemRows).select('id, name, stock_qty')
   if (itemsErr) throw itemsErr
   const idByName = new Map(insertedItems!.map((i) => [i.name as string, i.id as string]))
   console.log(`Inserted ${insertedItems!.length} items`)
@@ -265,7 +265,12 @@ async function main() {
 
   for (const o of orders) {
     const { lines, ...orderValues } = o
-    const { data: inserted, error: orderErr } = await db.from('orders').insert(orderValues).select('id').single()
+    // A total from the sheet is kept as typed, not recomputed from the lines.
+    const { data: inserted, error: orderErr } = await db
+      .from('orders')
+      .insert({ ...orderValues, total_manual: orderValues.total_price != null })
+      .select('id')
+      .single()
     if (orderErr) throw orderErr
     if (lines.length > 0) {
       const { error: linesErr } = await db.from('order_items').insert(
@@ -282,6 +287,11 @@ async function main() {
     }
   }
   console.log(`Inserted ${orders.length} orders with line items`)
+
+  // Lines added to a sent order take stock off (migration 010), but the
+  // sheet's stock is already net of these historic sales — put it back.
+  const { error: stockErr } = await db.from('items').upsert(insertedItems!.map(({ id, name, stock_qty }) => ({ id, name, stock_qty })))
+  if (stockErr) throw stockErr
   console.log('Import complete ✔')
 }
 

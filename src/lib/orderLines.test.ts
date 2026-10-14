@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fandomOf, groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from './orderLines'
+import { calculatedTotal, fandomOf, groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from './orderLines'
 import type { OrderItem } from './types'
 
 function line(
@@ -140,5 +140,15 @@ describe('linesTotal', () => {
     expect(linesTotal([])).toBe(0)
     expect(linesTotal(null)).toBe(0)
     expect(linesTotal(undefined)).toBe(0)
+  })
+})
+
+describe('calculatedTotal', () => {
+  it('adds shipping and takes off the discount', () => {
+    expect(calculatedTotal(1000, 300, 50)).toBe(1250)
+  })
+
+  it('treats unset shipping and discount as zero', () => {
+    expect(calculatedTotal(1000, null, undefined)).toBe(1000)
   })
 })

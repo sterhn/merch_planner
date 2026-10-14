@@ -1,4 +1,4 @@
-import { House, PiggyBank, Printer, ShoppingBag, Sticker, type LucideIcon } from 'lucide-react'
+import { House, PiggyBank, Printer, Settings2, ShoppingBag, Sticker, type LucideIcon } from 'lucide-react'
 import type { Tone } from './tones'
 
 /**
@@ -14,3 +14,14 @@ export const SECTIONS = {
 } as const satisfies Record<string, { to: string; label: string; icon: LucideIcon; tone: Tone }>
 
 export type SectionKey = keyof typeof SECTIONS
+
+/**
+ * Settings sits outside the tab bar (five tabs is the comfortable maximum on a
+ * phone): the sidebar lists it on desktop, the dashboard header links it on mobile.
+ */
+export const SETTINGS = { to: '/settings', label: 'Settings', icon: Settings2, tone: 'brand' } as const satisfies {
+  to: string
+  label: string
+  icon: LucideIcon
+  tone: Tone
+}

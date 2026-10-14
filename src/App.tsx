@@ -13,6 +13,7 @@ import OrderDetail from './pages/OrderDetail'
 import Catalog from './pages/Catalog'
 import Collects from './pages/Collects'
 import Expenses from './pages/Expenses'
+import SettingsPage from './pages/Settings'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -56,6 +57,7 @@ export default function App() {
           {/* The consignment-shelf page is archived — restore src/pages/Shelf.tsx
               from git history if the shelf ever comes back (see CLAUDE.md). */}
           <Route path="expenses" element={<Expenses />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

@@ -89,6 +89,12 @@ export function toISODate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** A timestamp's calendar date (YYYY-MM-DD) in the user's local timezone. */
+export function localISODate(timestamp: string): string {
+  const d = new Date(timestamp)
+  return Number.isNaN(d.getTime()) ? timestamp.slice(0, 10) : toISODate(d)
+}
+
 /** Today as YYYY-MM-DD in the user's local timezone. */
 export function todayISO(): string {
   return toISODate(new Date())

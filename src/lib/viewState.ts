@@ -1,5 +1,6 @@
 // Remembers where you stopped: how the Orders list was filtered and scrolled,
-// which order was open last, and whether order items are grouped by fandom.
+// which order was open last, whether order items are grouped by fandom, and
+// the Catalog and Collects filters.
 //
 // The value is cached in module scope so components can read it during render
 // (a useState initializer) without touching storage, and written back on a
@@ -14,6 +15,19 @@ export interface OrdersView {
   scrollY: number
 }
 
+export interface CatalogView {
+  search: string
+  type: string | null
+  fandom: string | null
+  /** Show archived items instead of the live catalog. */
+  archived: boolean
+}
+
+export interface CollectsView {
+  search: string
+  status: string
+}
+
 export interface LastOrder {
   id: string
   label: string
@@ -23,27 +37,42 @@ interface ViewState {
   orders: OrdersView
   lastOrder: LastOrder | null
   groupByFandom: boolean
+  catalog: CatalogView
+  collects: CollectsView
 }
 
 const DEFAULTS: ViewState = {
   orders: { filter: 'to_send', search: '', delivery: '', scrollY: 0 },
   lastOrder: null,
   groupByFandom: false,
+  catalog: { search: '', type: null, fandom: null, archived: false },
+  collects: { search: '', status: 'all' },
+}
+
+function fresh(): ViewState {
+  return {
+    ...DEFAULTS,
+    orders: { ...DEFAULTS.orders },
+    catalog: { ...DEFAULTS.catalog },
+    collects: { ...DEFAULTS.collects },
+  }
 }
 
 function load(): ViewState {
   try {
     const raw = localStorage.getItem(KEY)
-    if (!raw) return { ...DEFAULTS, orders: { ...DEFAULTS.orders } }
+    if (!raw) return fresh()
     const parsed = JSON.parse(raw) as Partial<ViewState>
     return {
       orders: { ...DEFAULTS.orders, ...parsed.orders },
       lastOrder: parsed.lastOrder ?? null,
       groupByFandom: parsed.groupByFandom ?? false,
+      catalog: { ...DEFAULTS.catalog, ...parsed.catalog },
+      collects: { ...DEFAULTS.collects, ...parsed.collects },
     }
   } catch {
     // Storage unavailable (private mode) or a corrupted value — start clean.
-    return { ...DEFAULTS, orders: { ...DEFAULTS.orders } }
+    return fresh()
   }
 }
 
@@ -108,5 +137,23 @@ export function fandomGrouping(): boolean {
 
 export function setFandomGrouping(on: boolean) {
   state = { ...state, groupByFandom: on }
+  schedule()
+}
+
+export function catalogView(): CatalogView {
+  return state.catalog
+}
+
+export function saveCatalogView(patch: Partial<CatalogView>) {
+  state = { ...state, catalog: { ...state.catalog, ...patch } }
+  schedule()
+}
+
+export function collectsView(): CollectsView {
+  return state.collects
+}
+
+export function saveCollectsView(patch: Partial<CollectsView>) {
+  state = { ...state, collects: { ...state.collects, ...patch } }
   schedule()
 }

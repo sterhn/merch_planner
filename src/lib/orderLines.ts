@@ -17,6 +17,18 @@ export function linesTotal(lines: readonly OrderItem[] | null | undefined): numb
   return (lines ?? []).reduce((sum, l) => sum + (l.unit_price ?? 0) * l.qty, 0)
 }
 
+/**
+ * Items + shipping − discount: what the database keeps as the order total
+ * (migration 010's triggers) unless the total is set by hand.
+ */
+export function calculatedTotal(
+  itemsTotal: number,
+  shipping: number | null | undefined,
+  discount: number | null | undefined,
+): number {
+  return itemsTotal + (shipping ?? 0) - (discount ?? 0)
+}
+
 export function fandomOf(line: OrderItem, catalog: ReadonlyMap<string, CatalogEntry>): string | null {
   const fandom = (line.item_id ? catalog.get(line.item_id) : undefined)?.fandom?.trim()
   return fandom ? fandom : null
