@@ -1,4 +1,4 @@
-import { House, PiggyBank, Printer, Settings2, ShoppingBag, Sticker, type LucideIcon } from 'lucide-react'
+import { ChartLine, House, PiggyBank, Printer, Settings2, ShoppingBag, Sticker, type LucideIcon } from 'lucide-react'
 import type { Tone } from './tones'
 
 /**
@@ -20,6 +20,14 @@ export type SectionKey = keyof typeof SECTIONS
  * phone): the sidebar lists it on desktop, the dashboard header links it on mobile.
  */
 export const SETTINGS = { to: '/settings', label: 'Settings', icon: Settings2, tone: 'brand' } as const satisfies {
+  to: string
+  label: string
+  icon: LucideIcon
+  tone: Tone
+}
+
+/** Insights is a read-only overview: sidebar on desktop, a link from the dashboard on mobile. */
+export const INSIGHTS = { to: '/insights', label: 'Insights', icon: ChartLine, tone: 'sun' } as const satisfies {
   to: string
   label: string
   icon: LucideIcon

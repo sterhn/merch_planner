@@ -20,6 +20,7 @@ const Catalog = lazy(() => import('./pages/Catalog'))
 const Collects = lazy(() => import('./pages/Collects'))
 const Expenses = lazy(() => import('./pages/Expenses'))
 const SettingsPage = lazy(() => import('./pages/Settings'))
+const Insights = lazy(() => import('./pages/Insights'))
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -65,6 +66,7 @@ export default function App() {
               from git history if the shelf ever comes back (see CLAUDE.md). */}
           <Route path="expenses" element={<Expenses />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="insights" element={<Insights />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

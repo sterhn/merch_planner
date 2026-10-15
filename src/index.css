@@ -31,6 +31,13 @@
   --color-sky: light-dark(oklch(0.55 0.11 235), oklch(0.8 0.08 235));
   --color-peach: light-dark(oklch(0.6 0.13 45), oklch(0.8 0.09 50));
 
+  /* Chart series (Insights). Brand purple + peach orange, stepped separately for
+     dark mode: the UI's dark brand/peach are too pale and grey for a 2px line.
+     Validated with the dataviz checker (lightness band, chroma, CVD ΔE ≥ 18,
+     ≥ 3:1 on the surface) in both modes. Strokes and fills only, never text. */
+  --color-chart-1: light-dark(oklch(0.52 0.14 295), oklch(0.66 0.14 295));
+  --color-chart-2: light-dark(oklch(0.6 0.13 45), oklch(0.665 0.14 50));
+
   /* Foregrounds for filled surfaces. The brand/accent/good/bad fills invert with
      the theme — light in dark mode — so white-on-fill drops to ~1.8:1 there.
      Every `bg-brand` / `bg-bad` / … must pair with its `text-on-*` counterpart. */

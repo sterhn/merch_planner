@@ -46,7 +46,7 @@ import Card from '../components/Card'
 import OrderStatus from '../components/OrderStatus'
 import PageHeader from '../components/PageHeader'
 import StatTile from '../components/StatTile'
-import { SECTIONS, SETTINGS } from '../components/sections'
+import { INSIGHTS, SECTIONS, SETTINGS } from '../components/sections'
 import { TONE_BLOB, type Tone } from '../components/tones'
 
 const MONTH_KEY = /^\d{4}-\d{2}$/
@@ -334,8 +334,19 @@ export default function Dashboard() {
         ))}
       </nav>
 
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="font-display text-base">Overview</h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-1 font-display text-base">
+          Overview
+          {/* The sidebar links Insights on desktop; this is the mobile way in. */}
+          <Link
+            to={INSIGHTS.to}
+            onClick={() => haptic(5)}
+            className="tap flex min-h-11 items-center gap-1 rounded-full px-2 font-sans text-xs font-bold text-brand hover:bg-brand/10"
+          >
+            <INSIGHTS.icon size={14} />
+            Insights
+          </Link>
+        </h2>
         <div className="flex items-center rounded-full glass">
           <button
             type="button"

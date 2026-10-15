@@ -6,11 +6,11 @@ import { SCHEMA_VERSION, useSchemaVersion } from '../hooks/useSettings'
 import { haptic } from '../lib/haptics'
 import BrandMark from './BrandMark'
 import LoadingDots from './LoadingDots'
-import { SECTIONS, SETTINGS } from './sections'
+import { INSIGHTS, SECTIONS, SETTINGS } from './sections'
 import { TONE_BLOB, type Tone } from './tones'
 
 const NAV = Object.values(SECTIONS)
-const SIDEBAR = [...NAV, SETTINGS]
+const SIDEBAR = [...NAV, INSIGHTS, SETTINGS]
 
 /**
  * Migrations are pasted into Supabase by hand, so the code can run ahead of
