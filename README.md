@@ -73,11 +73,13 @@ Open **https://sterhn.github.io/merch_planner/** in the browser, log in, then us
 | Section | What it's for |
 |---|---|
 | **Dashboard** | Revenue vs expenses (counted in the month an order was paid), unpaid/unsent counts, collect pay-by and arrival dates, low stock, backup reminder |
-| **Orders** | Pre-orders: contact, items, shipping & discount, paid → sent → delivered, delivery method & address. "Mark all as sent" on the To send list |
-| **Catalog** | All your merch with cost, price, auto-profit, and stock. Archive items you no longer sell |
+| **Orders** | Pre-orders: contact, items, shipping & discount, paid → sent → delivered, delivery method & address. "Mark all as sent" on the To send list; ready-to-copy customer messages on each order |
+| **Catalog** | All your merch with cost, price, auto-profit, and stock — list or photo grid, sortable, quick −/+ stock. Archive items you no longer sell |
 | **Collects** | Production runs: costs, pay-by and arrives-by dates, paid; total & per-unit cost auto-computed |
 | **Expenses** | Manual expense log (tap to edit) + paid collects shown automatically ("from collects") |
 | **Settings** | Download a backup, low-stock alert level, database version, sign out |
+| **Insights** | Revenue & net profit by month, top sellers, best fandoms, customers and repeat buyers — for 3 months, 12 months or all time |
+| **Packing** | From Orders → To send → *Packing list*: everything to pick, added up per item, then each order to tick off and mark sent |
 
 An order's **total** is worked out for you: items + shipping − discount. Tick "Set total by hand" on the order to type your own instead.
 

@@ -8,6 +8,7 @@ import { collectsView, saveCollectsView } from '../lib/viewState'
 import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
@@ -160,6 +161,7 @@ export default function Collects() {
         isEmpty={filtered.length === 0}
         icon={Printer}
         tone={SECTIONS.collects.tone}
+        skeleton={<SkeletonRows rows={3} />}
         errorMessage="Failed to load collects."
         emptyMessage={(collects ?? []).length === 0 ? 'No production runs yet.' : 'No collects match.'}
         onRetry={() => void refetch()}

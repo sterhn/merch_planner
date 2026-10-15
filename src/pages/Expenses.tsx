@@ -20,6 +20,7 @@ import { useConfirm } from '../hooks/useConfirm'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SwipeableRow from '../components/SwipeableRow'
@@ -161,6 +162,7 @@ export default function Expenses() {
         isEmpty={(feed ?? []).length === 0}
         icon={Receipt}
         tone={SECTIONS.expenses.tone}
+        skeleton={<SkeletonRows rows={5} />}
         errorMessage="Failed to load expenses."
         emptyMessage="No expenses yet."
         onRetry={() => void refetch()}
@@ -224,9 +226,9 @@ export default function Expenses() {
                     <button
                       type="button"
                       onClick={() => openEdit(row)}
-                      aria-label={`Edit ${label}`}
                       className="tap flex min-w-0 flex-1 items-center gap-3 p-3.5 text-left"
                     >
+                      <span className="sr-only">Edit </span>
                       {body}
                     </button>
                     {/* SwipeableRow ignores mouse pointers, so desktop needs a visible delete. */}

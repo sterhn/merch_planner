@@ -1,14 +1,16 @@
+import { Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { DatabaseZap, LogOut } from 'lucide-react'
 import { useSignOut } from '../hooks/useAuth'
 import { SCHEMA_VERSION, useSchemaVersion } from '../hooks/useSettings'
 import { haptic } from '../lib/haptics'
 import BrandMark from './BrandMark'
-import { SECTIONS, SETTINGS } from './sections'
+import LoadingDots from './LoadingDots'
+import { INSIGHTS, SECTIONS, SETTINGS } from './sections'
 import { TONE_BLOB, type Tone } from './tones'
 
 const NAV = Object.values(SECTIONS)
-const SIDEBAR = [...NAV, SETTINGS]
+const SIDEBAR = [...NAV, INSIGHTS, SETTINGS]
 
 /**
  * Migrations are pasted into Supabase by hand, so the code can run ahead of
@@ -109,7 +111,10 @@ export default function Layout() {
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
         <main key={section} className="mx-auto w-full max-w-4xl flex-1 animate-page-in px-4 pb-[calc(var(--spacing-nav)+env(safe-area-inset-bottom)+2rem)] pt-5 md:px-6 md:pb-10 md:pt-8">
           <SchemaBanner />
-          <Outlet />
+          {/* Pages are lazy-loaded (App.tsx); the nav stays put while one arrives. */}
+          <Suspense fallback={<LoadingDots />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

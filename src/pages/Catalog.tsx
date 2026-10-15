@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Archive, Tags } from 'lucide-react'
+import { Archive, LayoutGrid, List, Minus, Plus, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
+import { useStockNudge } from '../hooks/useStockNudge'
+import { CATALOG_SORTS, isCatalogSort, sortCatalog } from '../lib/catalogSort'
 import { buildableCounts, groupBundles, summarizeParts, type BundleComponent } from '../lib/bundles'
 import { formatRub } from '../lib/format'
 import { catalogView, saveCatalogView } from '../lib/viewState'
@@ -10,10 +12,11 @@ import Modal from '../components/Modal'
 import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonGrid, SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
-import { AddButton, PrimaryButton } from '../components/FormField'
+import { AddButton, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import ItemEditor from './catalog/ItemEditor'
 
@@ -29,8 +32,50 @@ function ItemImage({ src, type }: { src: string | null; type: string | null }) {
   )
 }
 
+/**
+ * − count + for an item's stock. Bundles and archived items show the count
+ * only: a bundle's stock comes from its parts, and retired stock is frozen.
+ */
+function StockControl({
+  item,
+  shown,
+  label,
+  low,
+  editable,
+  onNudge,
+}: {
+  item: Item
+  shown: number
+  label: string
+  low: boolean
+  editable: boolean
+  onNudge: (item: Item, delta: number) => void
+}) {
+  const count = <span className={low ? 'text-bad' : 'text-ink-faint'}>{label}</span>
+  if (!editable) return <p className="text-xs font-semibold">{count}</p>
+  return (
+    <div className="-mr-1.5 flex items-center justify-end">
+      <IconButton
+        icon={Minus}
+        size={10}
+        label={`One less ${item.name}`}
+        disabled={shown <= 0}
+        onClick={() => onNudge(item, -1)}
+      />
+      <span
+        className={`min-w-6 text-center font-display text-sm tabular-nums ${low ? 'text-bad' : ''}`}
+        aria-live="polite"
+        aria-label={`${item.name} stock ${shown}`}
+      >
+        {shown}
+      </span>
+      <IconButton icon={Plus} size={10} label={`One more ${item.name}`} onClick={() => onNudge(item, 1)} />
+    </div>
+  )
+}
+
 export default function Catalog() {
-  const { data: items, isLoading, isError, refetch } = useList<Item>('items', { orderBy: 'type' })
+  const { data: items, isLoading, isError, refetch } = useList<Item>('items')
   const { data: rawBundles } = useList<BundleComponent>('bundle_items', {
     select: 'bundle_id, component_id, qty',
   })
@@ -42,6 +87,8 @@ export default function Catalog() {
     setView((v) => ({ ...v, ...patch }))
     saveCatalogView(patch)
   }
+  const sort = isCatalogSort(view.sort) ? view.sort : 'type'
+  const nudgeStock = useStockNudge()
   const launchNew = useLaunchFlag()
   const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
   const [viewing, setViewing] = useState<Item | null>(null)
@@ -85,7 +132,7 @@ export default function Catalog() {
 
   const filtered = useMemo(() => {
     const q = view.search.trim().toLowerCase()
-    return (items ?? []).filter((i) => {
+    const matching = (items ?? []).filter((i) => {
       if (Boolean(i.archived) !== showArchived) return false
       if (view.type && i.type !== view.type) return false
       if (view.fandom && i.fandom !== view.fandom) return false
@@ -97,7 +144,8 @@ export default function Catalog() {
         (i.sku ?? '').toLowerCase().includes(q)
       )
     })
-  }, [items, view, showArchived])
+    return sortCatalog(matching, sort, (i) => canMakeById.get(i.id) ?? i.stock_qty ?? 0)
+  }, [items, view, showArchived, sort, canMakeById])
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
@@ -128,7 +176,7 @@ export default function Catalog() {
       )}
 
       {fandoms.length > 0 && (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
           <FilterChip active={view.fandom === null} onClick={() => updateView({ fandom: null })}>All fandoms</FilterChip>
           {fandoms.map((f) => (
             <FilterChip key={f} active={view.fandom === f} onClick={() => updateView({ fandom: view.fandom === f ? null : f })}>{f}</FilterChip>
@@ -136,67 +184,161 @@ export default function Catalog() {
         </div>
       )}
 
+      <div className="mb-4 flex items-center gap-2">
+        <select
+          className={`${inputClass} h-11 max-w-56 text-sm`}
+          aria-label="Sort catalog"
+          value={sort}
+          onChange={(e) => updateView({ sort: e.target.value })}
+        >
+          {CATALOG_SORTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              Sort: {s.label}
+            </option>
+          ))}
+        </select>
+        <div className="ml-auto flex rounded-full glass p-0.5" role="group" aria-label="Layout">
+          {(
+            [
+              { key: 'list', icon: List, label: 'List view' },
+              { key: 'grid', icon: LayoutGrid, label: 'Photo grid' },
+            ] as const
+          ).map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              aria-label={l.label}
+              title={l.label}
+              aria-pressed={view.layout === l.key}
+              onClick={() => {
+                haptic(5)
+                updateView({ layout: l.key })
+              }}
+              className={`tap grid size-11 place-items-center rounded-full transition-colors ${
+                view.layout === l.key ? 'bg-brand text-on-brand' : 'text-ink-muted hover:text-ink'
+              }`}
+            >
+              <l.icon size={18} />
+            </button>
+          ))}
+        </div>
+      </div>
+
       <QueryState
         isLoading={isLoading}
         isError={isError}
         isEmpty={filtered.length === 0}
         icon={Tags}
         tone={SECTIONS.catalog.tone}
+        skeleton={view.layout === 'grid' ? <SkeletonGrid /> : <SkeletonRows rows={6} thumb />}
         errorMessage="Failed to load catalog."
         emptyMessage={(items ?? []).length === 0 ? 'No items yet.' : 'No items match.'}
         onRetry={() => void refetch()}
       />
 
-      <div className="space-y-2">
-        {filtered.map((item) => {
-          const canMake = canMakeById.get(item.id) ?? null
-          const parts = bundleMap.get(item.id) ?? []
-          const stockShown = canMake ?? item.stock_qty ?? 0
-          return (
-            <div key={item.id} className="flex w-full items-center gap-3 rounded-card glass p-3.5">
-              <button
-                type="button"
-                onClick={() => {
-                  haptic()
-                  setViewing(item)
-                }}
-                aria-label={`View ${item.name}`}
-                className="tap shrink-0"
-              >
-                <ItemImage src={item.image_url} type={item.type} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  haptic()
-                  openEditor(item)
-                }}
-                className="tap flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
-              >
-                <div className="min-w-0 flex-1">
+      {view.layout === 'grid' ? (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          {filtered.map((item) => {
+            const canMake = canMakeById.get(item.id) ?? null
+            const stockShown = canMake ?? item.stock_qty ?? 0
+            return (
+              <div key={item.id} className="flex min-w-0 flex-col overflow-hidden rounded-card glass">
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic()
+                    setViewing(item)
+                  }}
+                  aria-label={`View ${item.name}`}
+                  className="tap block aspect-square w-full bg-surface-2"
+                >
+                  {item.image_url ? (
+                    <img src={item.image_url} alt="" className="size-full object-cover" loading="lazy" />
+                  ) : (
+                    <span className="grid size-full place-items-center bg-brand/10 font-display text-3xl text-brand/50">
+                      {(item.type ?? '★').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic()
+                    openEditor(item)
+                  }}
+                  className="tap min-h-11 px-3 pt-2 text-left"
+                >
+                  <p className="line-clamp-2 text-sm font-bold leading-snug">{item.name}</p>
+                  <p className="mt-0.5 font-display text-sm">{formatRub(item.sale_price)}</p>
+                </button>
+                <div className="mt-auto px-2 pb-1">
+                  <StockControl
+                    item={item}
+                    shown={stockShown}
+                    label={canMake !== null ? `can make ${canMake}` : `stock ${stockShown}`}
+                    low={!item.archived && stockShown <= settings.lowStockThreshold}
+                    editable={canMake === null && !item.archived}
+                    onNudge={nudgeStock}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((item) => {
+            const canMake = canMakeById.get(item.id) ?? null
+            const parts = bundleMap.get(item.id) ?? []
+            const stockShown = canMake ?? item.stock_qty ?? 0
+            return (
+              <div key={item.id} className="flex w-full items-center gap-3 rounded-card glass p-3.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic()
+                    setViewing(item)
+                  }}
+                  aria-label={`View ${item.name}`}
+                  className="tap shrink-0"
+                >
+                  <ItemImage src={item.image_url} type={item.type} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic()
+                    openEditor(item)
+                  }}
+                  className="tap min-w-0 flex-1 self-stretch text-left"
+                >
                   <p className="truncate text-sm font-bold">{item.name}</p>
                   <p className="truncate text-xs text-ink-muted">
-                    {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'} · cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
+                    {[item.type, item.fandom, item.sku].filter(Boolean).join(' · ') || '—'}
+                  </p>
+                  <p className="truncate text-xs text-ink-faint">
+                    cost {formatRub(item.cost_price)} · profit {formatRub(item.profit)}
                   </p>
                   {parts.length > 0 && (
                     <p className="mt-0.5 truncate text-xs font-semibold text-brand">{summarizeParts(parts)}</p>
                   )}
-                </div>
+                </button>
                 <div className="shrink-0 text-right">
                   <p className="font-display text-sm">{formatRub(item.sale_price)}</p>
-                  <p
-                    className={`text-xs font-semibold ${
-                      !item.archived && stockShown <= settings.lowStockThreshold ? 'text-bad' : 'text-ink-faint'
-                    }`}
-                  >
-                    {canMake !== null ? `can make: ${canMake}` : `stock: ${stockShown}`}
-                  </p>
+                  <StockControl
+                    item={item}
+                    shown={stockShown}
+                    label={canMake !== null ? `can make: ${canMake}` : `stock: ${stockShown}`}
+                    low={!item.archived && stockShown <= settings.lowStockThreshold}
+                    editable={canMake === null && !item.archived}
+                    onNudge={nudgeStock}
+                  />
                 </div>
-              </button>
-            </div>
-          )
-        })}
-      </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {editing !== null && (
         <ItemEditor

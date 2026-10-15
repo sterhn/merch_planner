@@ -101,7 +101,7 @@ export default function OrderDetailsForm({
           </span>
         </div>
         {!form.total_manual && (
-          <p className="mt-0.5 text-right text-2xs text-ink-faint">
+          <p className="mt-0.5 text-right text-2xs text-ink-muted">
             items {formatRub(itemsTotal)}
             {shipping ? ` + shipping ${formatRub(shipping)}` : ''}
             {discount ? ` − discount ${formatRub(discount)}` : ''}

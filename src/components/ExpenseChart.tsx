@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { formatMonth, formatRub } from '../lib/format'
 import { haptic } from '../lib/haptics'
+import { compactTick, monthLabel, niceStep } from './chartScale'
 
 export interface MonthTotal {
   month: string
@@ -13,29 +14,10 @@ const TOP_PAD = 14
 const PLOT_H = 110
 const LABEL_H = 18
 
-/** Smallest "nice" tick step (1/2/2.5/5 × 10ⁿ) that is ≥ rough. */
-function niceStep(rough: number): number {
-  const pow = 10 ** Math.floor(Math.log10(rough))
-  for (const mult of [1, 2, 2.5, 5, 10]) if (mult * pow >= rough) return mult * pow
-  return 10 * pow
-}
-
-function compactTick(value: number): string {
-  return value >= 1000 ? `${value / 1000}k` : String(value)
-}
-
 /** Bar with a 4px rounded data-end and a square baseline. */
 function barPath(x: number, y: number, w: number, h: number): string {
   const r = Math.min(4, h, w / 2)
   return `M${x} ${y + h} L${x} ${y + r} Q${x} ${y} ${x + r} ${y} L${x + w - r} ${y} Q${x + w} ${y} ${x + w} ${y + r} L${x + w} ${y + h} Z`
-}
-
-function monthLabel(month: string, index: number): string {
-  const mm = month.slice(5, 7)
-  const name = new Date(Number(month.slice(0, 4)), Number(mm) - 1, 1)
-    .toLocaleDateString('en-US', { month: 'short' })
-  // Anchor the year at January and at the left edge of the chart.
-  return index === 0 || mm === '01' ? `${name} ${month.slice(2, 4)}` : name
 }
 
 /**
