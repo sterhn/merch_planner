@@ -19,7 +19,8 @@ Report how many commits behind the branch was. Never build on a stale base — a
 
 - React 19 + TypeScript + Vite 8, HashRouter (GitHub Pages), PWA via vite-plugin-pwa (offline caching; keep woff2 in `globPatterns`)
 - Tailwind CSS v4, CSS-first: design tokens live in an `@theme` block in `src/index.css`. Tokens use `light-dark()`, so dark mode follows the system automatically with no `dark:` variants.
-- Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`
+- Supabase (data + auth + storage) with TanStack Query; generic CRUD hooks in `src/hooks/useTable.ts`. PostgREST caps a read at 1000 rows, so every list read pages through `fetchAllPages` (`src/lib/paging.ts`) with a stable `.order('id')`; ids that travel in a URL (`.in(...)`) go in `chunk`ed batches.
+- Pages other than the dashboard are `React.lazy` in `App.tsx`; `Layout` wraps the outlet in `<Suspense>`.
 - Icons: lucide-react (import icons individually). Fonts: Manrope Variable (body) + Nunito Variable (display, weight 820 via `--font-display--font-variation-settings`) — replacements must keep Cyrillic coverage.
 
 ### Tokens
@@ -27,6 +28,8 @@ Report how many commits behind the branch was. Never build on a stale base — a
 - Surfaces & ink: `bg-page`, `bg-surface`, `bg-surface-2`, `text-ink`, `text-ink-muted`, `text-ink-faint`, `border-line`
 - Colour: `bg-brand`, `bg-brand-strong`, `bg-accent`, `bg-sun`, `text-good`, `text-bad`. Gradient twins `brand-2` / `brand-strong-2` sit at the same lightness as `brand` / `brand-strong`, so `bg-linear-to-br from-brand to-brand-2` keeps `text-on-brand` legible.
 - Section pastels `sky`, `peach`: icon ink and `/15` tints only — too light for small text and no `on-*` pair.
+- Chart series: `chart-1` (purple), `chart-2` (orange) — stepped separately for dark mode and validated with the dataviz checker; strokes/fills only, never text. Single-measure bars use `chart-1`. `TrendChart` (lines + readout + table view), `BarList` (ranked one-hue bars), axis helpers in `components/chartScale.ts`.
+- Small text on `surface-2` must be `ink-muted`, not `ink-faint` (2.9:1). Nothing red/ink sits straight on the foil — put it on glass.
 - Tones: `src/components/tones.ts` (`TONE_BLOB` tinted icon blob, `TONE_TEXT`). Each top-level page has an icon + tone in `src/components/sections.ts`, shared by the nav and `PageHeader` (`icon`/`tone` props).
 - **Foregrounds on filled surfaces: `text-on-brand`, `text-on-brand-strong`, `text-on-accent`, `text-on-good`, `text-on-bad`.** Never `text-white` on a `bg-brand`/`bg-accent`/`bg-good`/`bg-bad` fill — those fills become *light* in dark mode, and white on them lands near 1.8:1.
 - Type: `text-2xs` (11px) and `text-3xs` (10px) below Tailwind's `text-xs` — no arbitrary `text-[10px]`
@@ -57,7 +60,7 @@ Data rules the database enforces (migrations 003/009/010), so the app doesn't du
 ## Design system pointers
 
 - Shared components: `src/components/`
-  - Page scaffolding: `PageHeader.tsx` (title + action slot), `QueryState.tsx` (the loading/error/empty triad — pass the query's flags, it renders nothing once there's data), `Card.tsx` (+ `SectionLabel`), `EmptyState.tsx`
+  - Page scaffolding: `PageHeader.tsx` (title + action slot), `QueryState.tsx` (the loading/error/empty triad — pass the query's flags and a `skeleton` from `Skeleton.tsx` shaped like the list; it renders nothing once there's data), `Card.tsx` (+ `SectionLabel`), `EmptyState.tsx`. Skeleton bars pulse; glass panels never animate.
   - Controls: `FormField.tsx` (`inputClass`, `textareaClass`, `Field`, `PrimaryButton`, `DangerButton`, `SecondaryButton`, `AddButton`, `IconButton`), `SearchInput.tsx`, `FilterChip.tsx`, `StatusBadge.tsx`, `RowEditor.tsx` (`PickRowButton`, `AddRowButton` for editable row lists)
   - Display: `StatTile.tsx` (optional `icon`), `OrderStatus.tsx`, `AnimatedNumber.tsx`, `ExpenseChart.tsx`, `CatalogPicker.tsx`, `BrandMark.tsx` (logo), `LoadingDots.tsx` (the loading indicator — `QueryState` and `EmptyState spin` use it)
   - Behaviour: `Modal.tsx` (animated bottom sheet; traps focus, stacks — topmost sheet owns Escape/Tab), `ConfirmSheet.tsx` (`useConfirm` — themed replacement for `window.confirm`; never use the native dialog), `SwipeableRow.tsx`, `Toast.tsx` (`showToast(text, { label: 'Undo', onClick })` renders an action button)
@@ -67,7 +70,8 @@ Data rules the database enforces (migrations 003/009/010), so the app doesn't du
 - Celebration: `src/lib/confetti.ts` `celebrate(el?)` for happy moments (order status advanced, collect received). `StatusBadge` fires it when switched on. Respects reduced motion.
 - Quick add: `?new=1` on Orders/Catalog/Collects/Expenses opens the add sheet (`useLaunchFlag`); the dashboard's quick-add row links there. `/collects?open=<id>` opens one collect (dashboard dates and expense rows link there).
 - Big editors live beside their page: `src/pages/order/` (details form, line sheets), `src/pages/catalog/ItemEditor.tsx`, `src/pages/collects/CollectEditor.tsx`. Editors mount only while open and start their form from props (`key` by id), instead of a parent holding the form state.
-- Settings (`/settings`, `SETTINGS` in `sections.ts`) is outside the 5-tab mobile bar: sidebar on desktop, gear in the dashboard header on mobile. Preferences live in the `app_settings` table (`useSettings`); list filters live in `src/lib/viewState.ts` (localStorage).
+- Settings (`/settings`, `SETTINGS` in `sections.ts`) and Insights (`/insights`, `INSIGHTS`) are outside the 5-tab mobile bar: sidebar on desktop; on mobile, the dashboard header gear and the "Insights" link beside Overview. Insights maths lives in `lib/insights.ts` and must keep the dashboard's revenue rule.
+- Packing (`/orders/pack`, from the To send list): pick list (`lib/packing.ts`) + per-order ticks kept in `viewState`. Customer message templates: `lib/customerMessages.ts` (Russian, no gendered past-tense verbs). Catalog sort: `lib/catalogSort.ts`; quick stock +/− batches taps in `useStockNudge`. Preferences live in the `app_settings` table (`useSettings`); list filters live in `src/lib/viewState.ts` (localStorage).
 - Print/receipt HTML is built in `src/lib/printOrder.ts` (tested), not in pages.
 - Touch targets ≥ 44px for primary controls. Deliberate exceptions: `FilterChip` (36px) and `IconButton size={10}` (40px, inside list rows) — don't shrink anything else below 44px.
 - Money inputs are `type="text" inputMode="decimal"` + `parseMoney` — never `type="number"`, which rejects the comma decimal separator a Russian keyboard produces. Whole-number counts stay `type="number" inputMode="numeric"`.
