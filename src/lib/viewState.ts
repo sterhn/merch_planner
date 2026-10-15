@@ -21,11 +21,21 @@ export interface CatalogView {
   fandom: string | null
   /** Show archived items instead of the live catalog. */
   archived: boolean
+  /** List rows, or a photo grid. */
+  layout: 'list' | 'grid'
+  /** A CatalogSort key (lib/catalogSort). */
+  sort: string
 }
 
 export interface CollectsView {
   search: string
   status: string
+}
+
+/** Packing-day ticks: order line ids packed, pick-list keys picked. */
+export interface PackingTicks {
+  packed: string[]
+  picked: string[]
 }
 
 export interface LastOrder {
@@ -39,14 +49,16 @@ interface ViewState {
   groupByFandom: boolean
   catalog: CatalogView
   collects: CollectsView
+  packing: PackingTicks
 }
 
 const DEFAULTS: ViewState = {
   orders: { filter: 'to_send', search: '', delivery: '', scrollY: 0 },
   lastOrder: null,
   groupByFandom: false,
-  catalog: { search: '', type: null, fandom: null, archived: false },
+  catalog: { search: '', type: null, fandom: null, archived: false, layout: 'list', sort: 'type' },
   collects: { search: '', status: 'all' },
+  packing: { packed: [], picked: [] },
 }
 
 function fresh(): ViewState {
@@ -55,6 +67,7 @@ function fresh(): ViewState {
     orders: { ...DEFAULTS.orders },
     catalog: { ...DEFAULTS.catalog },
     collects: { ...DEFAULTS.collects },
+    packing: { packed: [], picked: [] },
   }
 }
 
@@ -69,6 +82,10 @@ function load(): ViewState {
       groupByFandom: parsed.groupByFandom ?? false,
       catalog: { ...DEFAULTS.catalog, ...parsed.catalog },
       collects: { ...DEFAULTS.collects, ...parsed.collects },
+      packing: {
+        packed: Array.isArray(parsed.packing?.packed) ? parsed.packing.packed : [],
+        picked: Array.isArray(parsed.packing?.picked) ? parsed.packing.picked : [],
+      },
     }
   } catch {
     // Storage unavailable (private mode) or a corrupted value — start clean.
@@ -155,5 +172,14 @@ export function collectsView(): CollectsView {
 
 export function saveCollectsView(patch: Partial<CollectsView>) {
   state = { ...state, collects: { ...state.collects, ...patch } }
+  schedule()
+}
+
+export function packingTicks(): PackingTicks {
+  return state.packing
+}
+
+export function savePackingTicks(patch: Partial<PackingTicks>) {
+  state = { ...state, packing: { ...state.packing, ...patch } }
   schedule()
 }

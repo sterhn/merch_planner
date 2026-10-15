@@ -387,15 +387,24 @@ export default function Orders() {
       )}
 
       {filter === 'to_send' && filtered.length > 0 && (
-        <SecondaryButton
-          tone="good"
-          className="mb-3 w-full"
-          onClick={() => markAllSent(filtered.map((o) => o.id))}
-          disabled={bulkUpdate.isPending}
-        >
-          <Send size={15} />
-          Mark all {filtered.length} as sent
-        </SecondaryButton>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <Link
+            to="/orders/pack"
+            onClick={() => haptic(5)}
+            className="tap flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-brand/40 px-4 text-sm font-bold text-brand hover:bg-brand/10"
+          >
+            <PackageOpen size={15} />
+            Packing list
+          </Link>
+          <SecondaryButton
+            tone="good"
+            onClick={() => markAllSent(filtered.map((o) => o.id))}
+            disabled={bulkUpdate.isPending}
+          >
+            <Send size={15} />
+            Mark all {filtered.length} sent
+          </SecondaryButton>
+        </div>
       )}
 
       <QueryState

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { useDelete, useList, useUpdate } from '../hooks/useTable'
@@ -21,6 +21,7 @@ import PageHeader from '../components/PageHeader'
 import { AddButton, DangerButton, IconButton } from '../components/FormField'
 import OrderDetailsForm from './order/OrderDetailsForm'
 import { AddLineSheet, EditLineSheet, ImportSheet } from './order/LineSheets'
+import MessagesSheet from './order/MessagesSheet'
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>()
@@ -93,6 +94,7 @@ export default function OrderDetail() {
   const [exporting, setExporting] = useState(false)
   const [editingLine, setEditingLine] = useState<OrderItem | null>(null)
   const [importing, setImporting] = useState(false)
+  const [messaging, setMessaging] = useState(false)
   const [grouping, setGrouping] = useState(fandomGrouping)
 
   // Lets the Orders screen offer a jump back into the order you had open.
@@ -239,6 +241,15 @@ export default function OrderDetail() {
       </button>
 
       <PageHeader title={order.telegram || order.customer_email || 'Order'}>
+        <IconButton
+          icon={MessageSquareText}
+          label="Message to customer"
+          onClick={() => {
+            haptic()
+            setMessaging(true)
+          }}
+          className="print:hidden"
+        />
         <IconButton
           icon={exporting ? Loader2 : ImageDown}
           label="Share as image"
@@ -415,6 +426,14 @@ export default function OrderDetail() {
       {editingLine && (
         <EditLineSheet key={editingLine.id} line={editingLine} itemNames={itemNames} onClose={() => setEditingLine(null)} />
       )}
+
+      <MessagesSheet
+        open={messaging}
+        onClose={() => setMessaging(false)}
+        order={order}
+        lines={lines ?? []}
+        catalog={itemNames}
+      />
 
       <ImportSheet open={importing} onClose={() => setImporting(false)} orderId={id!} nextPosition={nextPosition} />
 

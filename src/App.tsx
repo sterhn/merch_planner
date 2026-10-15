@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard'
 // still works). Layout's <Suspense> covers the moment one is fetching.
 const Orders = lazy(() => import('./pages/Orders'))
 const OrderDetail = lazy(() => import('./pages/OrderDetail'))
+const Packing = lazy(() => import('./pages/Packing'))
 const Catalog = lazy(() => import('./pages/Catalog'))
 const Collects = lazy(() => import('./pages/Collects'))
 const Expenses = lazy(() => import('./pages/Expenses'))
@@ -56,6 +57,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="orders/pack" element={<Packing />} />
           <Route path="orders/:id" element={<OrderDetail />} />
           <Route path="catalog" element={<Catalog />} />
           <Route path="collects" element={<Collects />} />
