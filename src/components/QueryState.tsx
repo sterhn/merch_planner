@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import EmptyState from './EmptyState'
 import LoadingDots from './LoadingDots'
@@ -17,6 +18,7 @@ export default function QueryState({
   emptyMessage,
   emptyHint,
   onRetry,
+  skeleton,
 }: {
   isLoading: boolean
   isError: boolean
@@ -27,8 +29,10 @@ export default function QueryState({
   emptyMessage: string
   emptyHint?: string
   onRetry?: () => void
+  /** Shown while loading instead of the dots — a Skeleton shaped like the list. */
+  skeleton?: ReactNode
 }) {
-  if (isLoading) return <LoadingDots />
+  if (isLoading) return skeleton ?? <LoadingDots />
   if (isError) return <EmptyState icon={icon} tone="bad" message={errorMessage} onRetry={onRetry} />
   if (isEmpty) return <EmptyState icon={icon} tone={tone} message={emptyMessage} hint={emptyHint} />
   return null

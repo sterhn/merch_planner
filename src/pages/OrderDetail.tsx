@@ -202,9 +202,10 @@ export default function OrderDetail() {
         <button
           type="button"
           onClick={() => openLineEdit(l)}
-          className="tap flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
-          aria-label={`Edit ${catalogItem?.name ?? l.name_text ?? 'item'}`}
+          className="tap flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
         >
+          {/* "Edit" for screen readers; the rest of the name is what the row shows. */}
+          <span className="sr-only">Edit </span>
           {catalogItem?.image_url
             ? <img src={catalogItem.image_url} alt="" className="size-8 shrink-0 rounded-lg object-cover" loading="lazy" />
             : <div className="size-8 shrink-0 rounded-lg bg-surface-2" />
@@ -400,7 +401,8 @@ export default function OrderDetail() {
           onSave={(values) => updateOrder.mutate({ id: id!, values })}
         />
 
-        <div className="mt-4">
+        {/* A glass pill behind it: red text straight on the foil is ~2.7:1. */}
+        <div className="mt-4 rounded-full glass">
           <DangerButton
             onClick={() =>
               confirm('Delete this whole order?', () =>

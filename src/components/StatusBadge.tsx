@@ -11,7 +11,9 @@ export default function StatusBadge({
   label: string
   onClick?: () => void
 }) {
-  const cls = on ? 'bg-good/10 text-good' : 'bg-surface-2 text-ink-faint'
+  // Off state is ink-muted, not ink-faint: faint on surface-2 is 2.9:1, under
+  // the 4.5:1 small bold text needs.
+  const cls = on ? 'bg-good/10 text-good' : 'bg-surface-2 text-ink-muted'
   if (onClick) {
     return (
       <button

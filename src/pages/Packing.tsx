@@ -15,6 +15,7 @@ import { showToast } from '../lib/toast'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { PrimaryButton, SecondaryButton } from '../components/FormField'
 
@@ -144,6 +145,7 @@ export default function Packing() {
         isEmpty={toSend.length === 0}
         icon={PackageCheck}
         tone="sun"
+        skeleton={<SkeletonRows rows={4} />}
         errorMessage="Failed to load the orders to pack."
         emptyMessage="Nothing to pack!"
         emptyHint="Paid orders waiting to be sent show up here."
@@ -194,7 +196,7 @@ export default function Packing() {
               <Card key={o.id} className={complete ? '[--glass-fill:88%]' : ''}>
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <Link to={`/orders/${o.id}`} className="block truncate text-base font-bold text-ink hover:underline">
+                    <Link to={`/orders/${o.id}`} className="tap flex min-h-11 items-center truncate text-base font-bold text-ink hover:underline">
                       {who}
                     </Link>
                     <p className="text-xs font-semibold text-ink-muted">{o.delivery_method ?? 'no delivery method'}</p>

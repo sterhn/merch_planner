@@ -21,6 +21,7 @@ import Card from '../components/Card'
 import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonRows } from '../components/Skeleton'
 import StatTile from '../components/StatTile'
 import TrendChart from '../components/TrendChart'
 import { INSIGHTS } from '../components/sections'
@@ -105,6 +106,7 @@ export default function Insights() {
         isError={isError}
         isEmpty={false}
         icon={INSIGHTS.icon}
+        skeleton={<SkeletonRows rows={4} />}
         errorMessage="Failed to load insights."
         emptyMessage=""
         onRetry={() => queries.forEach((q) => void q.refetch())}

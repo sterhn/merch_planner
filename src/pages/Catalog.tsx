@@ -12,6 +12,7 @@ import Modal from '../components/Modal'
 import FilterChip from '../components/FilterChip'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonGrid, SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
@@ -229,6 +230,7 @@ export default function Catalog() {
         isEmpty={filtered.length === 0}
         icon={Tags}
         tone={SECTIONS.catalog.tone}
+        skeleton={view.layout === 'grid' ? <SkeletonGrid /> : <SkeletonRows rows={6} thumb />}
         errorMessage="Failed to load catalog."
         emptyMessage={(items ?? []).length === 0 ? 'No items yet.' : 'No items match.'}
         onRetry={() => void refetch()}

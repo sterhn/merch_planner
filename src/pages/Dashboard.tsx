@@ -26,7 +26,7 @@ import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
 import { backupDue } from '../lib/settings'
 import EmptyState from '../components/EmptyState'
-import LoadingDots from '../components/LoadingDots'
+import { SkeletonDashboard } from '../components/Skeleton'
 import {
   currentMonth,
   daysFromTodayISO,
@@ -294,10 +294,32 @@ export default function Dashboard() {
     </PageHeader>
   )
 
+  // Needs no data, so it's usable while the numbers are still loading.
+  const quickAdd = (
+    <nav aria-label="Quick add" className="mb-4 grid grid-cols-4 gap-2">
+      {QUICK_ACTIONS.map((a, i) => (
+        <Link
+          key={a.to}
+          to={a.to}
+          onClick={() => haptic(5)}
+          aria-label={`Add ${a.label.toLowerCase()}`}
+          className="group lift flex animate-pop flex-col items-center gap-1.5 rounded-card glass px-1 py-3 md:flex-row md:justify-center md:gap-2.5 md:py-2.5"
+          style={{ animationDelay: `${i * 40}ms` }}
+        >
+          <span className={`grid size-10 place-items-center rounded-[38%] ${TONE_BLOB[a.tone]}`} aria-hidden>
+            <a.icon size={19} strokeWidth={2.3} className="group-hover:animate-wiggle" />
+          </span>
+          <span className="text-2xs font-bold text-ink-muted md:text-sm">+ {a.label}</span>
+        </Link>
+      ))}
+    </nav>
+  )
+
   if (isLoading || isError) {
     return (
       <div>
         {header}
+        {quickAdd}
         {isError ? (
           <EmptyState
             icon={LayoutDashboard}
@@ -306,7 +328,7 @@ export default function Dashboard() {
             onRetry={() => queries.forEach((q) => void q.refetch())}
           />
         ) : (
-          <LoadingDots />
+          <SkeletonDashboard />
         )}
       </div>
     )
@@ -315,24 +337,7 @@ export default function Dashboard() {
   return (
     <div>
       {header}
-
-      <nav aria-label="Quick add" className="mb-4 grid grid-cols-4 gap-2">
-        {QUICK_ACTIONS.map((a, i) => (
-          <Link
-            key={a.to}
-            to={a.to}
-            onClick={() => haptic(5)}
-            aria-label={`Add ${a.label.toLowerCase()}`}
-            className="group lift flex animate-pop flex-col items-center gap-1.5 rounded-card glass px-1 py-3 md:flex-row md:justify-center md:gap-2.5 md:py-2.5"
-            style={{ animationDelay: `${i * 40}ms` }}
-          >
-            <span className={`grid size-10 place-items-center rounded-[38%] ${TONE_BLOB[a.tone]}`} aria-hidden>
-              <a.icon size={19} strokeWidth={2.3} className="group-hover:animate-wiggle" />
-            </span>
-            <span className="text-2xs font-bold text-ink-muted md:text-sm">+ {a.label}</span>
-          </Link>
-        ))}
-      </nav>
+      {quickAdd}
 
       <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-1 font-display text-base">
@@ -426,7 +431,7 @@ export default function Dashboard() {
               </span>
             }
             action={
-              <Link to="/catalog" className="text-xs font-bold text-brand">
+              <Link to="/catalog" className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand">
                 Catalog
               </Link>
             }
@@ -463,7 +468,7 @@ export default function Dashboard() {
           <Card
             title="Recent orders"
             action={
-              <Link to="/orders" className="text-xs font-bold text-brand">
+              <Link to="/orders" className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand">
                 View all
               </Link>
             }

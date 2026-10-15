@@ -13,6 +13,7 @@ import Modal from '../components/Modal'
 import OrderStatus from '../components/OrderStatus'
 import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
+import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import { celebrate } from '../lib/confetti'
@@ -413,6 +414,7 @@ export default function Orders() {
         isEmpty={filtered.length === 0}
         icon={PackageOpen}
         tone={SECTIONS.orders.tone}
+        skeleton={<SkeletonRows rows={5} />}
         errorMessage="Failed to load orders."
         emptyMessage="No orders found."
         emptyHint="Swipe left to advance status, right to delete."
