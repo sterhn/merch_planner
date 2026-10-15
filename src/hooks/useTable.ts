@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { sortRows } from '../lib/sortRows'
+import { fetchAllPages } from '../lib/paging'
 
 interface ListOptions {
   orderBy?: string
@@ -29,11 +30,14 @@ export function useList<T>(table: string, opts: ListOptions = {}) {
 
   return useQuery({
     queryKey: [table, select],
-    queryFn: async (): Promise<T[]> => {
-      const { data, error } = await supabase.from(table).select(select)
-      if (error) throw error
-      return data as T[]
-    },
+    // Paged (Supabase caps a read at 1000 rows), ordered by id so pages don't
+    // shift under each other; the display order comes from `sort` below.
+    queryFn: (): Promise<T[]> =>
+      fetchAllPages(async (from, to) => {
+        const { data, error } = await supabase.from(table).select(select).order('id').range(from, to)
+        if (error) throw error
+        return data as T[]
+      }),
     select: sort,
   })
 }

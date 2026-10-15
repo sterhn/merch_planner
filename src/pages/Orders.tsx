@@ -22,6 +22,8 @@ import { AddButton, Field, IconButton, inputClass, PrimaryButton, SecondaryButto
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
 import { openPrintWindow, orderListPageHtml } from '../lib/printOrder'
+import { chunk, fetchAllPages } from '../lib/paging'
+import { failureMessage } from '../lib/errorMessage'
 import {
   fandomGrouping,
   flushViewState,
@@ -227,23 +229,39 @@ export default function Orders() {
     setPrintLoading(true)
 
     try {
-      const orderIds = filtered.map((o) => o.id)
-
-      const [{ data: allItems }, { data: catalog }] = await Promise.all([
-        supabase
-          .from('order_items')
-          .select('*')
-          .in('order_id', orderIds)
-          .order('position', { ascending: true, nullsFirst: false })
-          .order('created_at'),
-        supabase.from('items').select('id, name, fandom'),
+      // Ids go in the URL, so ask in batches; each batch pages past the
+      // 1000-row cap. A failed read must stop the printout — printing every
+      // order as "No items added" would look like real (empty) orders.
+      const idBatches = chunk(filtered.map((o) => o.id), 80)
+      const [lineBatches, catalog] = await Promise.all([
+        Promise.all(
+          idBatches.map((ids) =>
+            fetchAllPages(async (from, to) => {
+              const { data, error } = await supabase
+                .from('order_items')
+                .select('*')
+                .in('order_id', ids)
+                .order('position', { ascending: true, nullsFirst: false })
+                .order('created_at')
+                .order('id')
+                .range(from, to)
+              if (error) throw error
+              return data as OrderItem[]
+            }),
+          ),
+        ),
+        fetchAllPages(async (from, to) => {
+          const { data, error } = await supabase.from('items').select('id, name, fandom').order('id').range(from, to)
+          if (error) throw error
+          return data as { id: string; name: string; fandom: string | null }[]
+        }),
       ])
 
       const catalogMap = new Map<string, { name: string; fandom: string | null }>()
-      for (const item of catalog ?? []) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
+      for (const item of catalog) catalogMap.set(item.id, { name: item.name, fandom: item.fandom })
 
       const linesByOrder = new Map<string, OrderItem[]>()
-      for (const line of (allItems ?? []) as OrderItem[]) {
+      for (const line of lineBatches.flat()) {
         if (!linesByOrder.has(line.order_id)) linesByOrder.set(line.order_id, [])
         linesByOrder.get(line.order_id)!.push(line)
       }
@@ -260,6 +278,8 @@ export default function Orders() {
           printedOn: formatDate(todayISO()),
         }),
       )
+    } catch (err) {
+      showToast(failureMessage('Printing', err))
     } finally {
       setPrintLoading(false)
     }

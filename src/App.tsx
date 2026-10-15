@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import BrandMark from './components/BrandMark'
@@ -8,12 +9,16 @@ import Layout from './components/Layout'
 import Toast from './components/Toast'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import Orders from './pages/Orders'
-import OrderDetail from './pages/OrderDetail'
-import Catalog from './pages/Catalog'
-import Collects from './pages/Collects'
-import Expenses from './pages/Expenses'
-import SettingsPage from './pages/Settings'
+
+// The dashboard is the first screen, so it ships in the main bundle; every
+// other page loads on first visit (and is precached by the PWA, so offline
+// still works). Layout's <Suspense> covers the moment one is fetching.
+const Orders = lazy(() => import('./pages/Orders'))
+const OrderDetail = lazy(() => import('./pages/OrderDetail'))
+const Catalog = lazy(() => import('./pages/Catalog'))
+const Collects = lazy(() => import('./pages/Collects'))
+const Expenses = lazy(() => import('./pages/Expenses'))
+const SettingsPage = lazy(() => import('./pages/Settings'))
 
 export default function App() {
   const { session, loading } = useAuth()

@@ -7,6 +7,7 @@ import { BACKUP_TABLES, backupFileName, makeBackup, OPTIONAL_TABLES, type Backup
 import { backupDue } from '../lib/settings'
 import { formatDate, parseCount } from '../lib/format'
 import { saveFile } from '../lib/saveFile'
+import { fetchAllPages } from '../lib/paging'
 import { showToast } from '../lib/toast'
 import { failureMessage } from '../lib/errorMessage'
 import { haptic } from '../lib/haptics'
@@ -15,17 +16,14 @@ import PageHeader from '../components/PageHeader'
 import { SETTINGS } from '../components/sections'
 import { inputClass, PrimaryButton, SecondaryButton } from '../components/FormField'
 
-// Supabase returns at most 1000 rows per request; page through the rest.
-const PAGE = 1000
-
-async function fetchAll(table: string): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.from(table).select('*').range(from, from + PAGE - 1)
+function fetchAll(table: string): Promise<Record<string, unknown>[]> {
+  // app_settings is keyed by `key`; every other table has an id.
+  const key = table === 'app_settings' ? 'key' : 'id'
+  return fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase.from(table).select('*').order(key).range(from, to)
     if (error) throw error
-    rows.push(...(data as Record<string, unknown>[]))
-    if (data.length < PAGE) return rows
-  }
+    return data as Record<string, unknown>[]
+  })
 }
 
 export default function Settings() {
