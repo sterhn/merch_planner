@@ -126,7 +126,7 @@ export default function Packing() {
     <div>
       <button
         onClick={() => navigate('/orders')}
-        className="tap -ml-2 mb-3 flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-bold text-brand"
+        className="tap glass mb-3 flex min-h-11 w-fit items-center gap-1.5 rounded-full px-3.5 text-sm font-bold text-brand"
       >
         <ArrowLeft size={16} />
         Back to orders

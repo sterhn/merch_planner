@@ -215,7 +215,7 @@ export default function Expenses() {
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="font-display text-base">{formatMonth(month)}</h2>
-            <span className="font-display text-sm text-bad">−{formatRub(total)}</span>
+            <span className="glass rounded-full px-3 py-0.5 font-display text-sm text-bad">−{formatRub(total)}</span>
           </div>
           <div className="space-y-2">
             {rows.map((row) => {

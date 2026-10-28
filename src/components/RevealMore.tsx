@@ -25,7 +25,7 @@ export default function RevealMore({ onReveal, remaining }: { onReveal: () => vo
       ref={ref}
       type="button"
       onClick={onReveal}
-      className="tap mt-2 min-h-11 w-full rounded-full text-sm font-bold text-brand hover:bg-brand/10"
+      className="tap glass mt-2 min-h-11 w-full rounded-full text-sm font-bold text-brand"
     >
       Show more ({remaining})
     </button>

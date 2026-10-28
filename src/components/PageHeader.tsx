@@ -33,7 +33,7 @@ export default function PageHeader({
         )}
         <div className="min-w-0">
           {typeof title === 'string' ? <h1 className="truncate font-display text-2xl leading-tight">{title}</h1> : title}
-          {subtitle && <p className="truncate text-xs font-semibold text-ink-faint">{subtitle}</p>}
+          {subtitle && <p className="truncate text-xs font-semibold text-ink">{subtitle}</p>}
         </div>
       </div>
       {children && <div className="flex shrink-0 items-center gap-1">{children}</div>}

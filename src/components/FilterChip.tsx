@@ -29,7 +29,11 @@ export default function FilterChip({ active, onClick, tone = 'brand', count, chi
       {count !== undefined && (
         <span
           className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-2xs tabular-nums ${
-            active ? 'bg-on-brand/20' : 'bg-surface-2 text-ink-muted'
+            active
+              ? tone === 'accent'
+                ? 'bg-on-accent text-accent'
+                : 'bg-on-brand text-brand'
+              : 'bg-surface-2 text-ink-muted'
           }`}
         >
           {count}

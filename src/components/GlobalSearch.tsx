@@ -6,7 +6,6 @@ import { useList } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import { haptic } from '../lib/haptics'
 import Modal from './Modal'
-import OrderStatus from './OrderStatus'
 import SearchInput from './SearchInput'
 import { SECTIONS } from './sections'
 import { TONE_BLOB } from './tones'
@@ -22,6 +21,9 @@ interface Hit {
   aside?: React.ReactNode
   image?: string | null
 }
+
+const statusLabel = (o: OrderWithPhotos) =>
+  o.delivered ? 'delivered' : o.sent ? 'shipped' : o.paid ? 'awaiting shipment' : 'unpaid'
 
 const norm = (s: string | null | undefined) => (s ?? '').toLowerCase()
 
@@ -58,8 +60,8 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         key: o.id,
         to: `/orders/${o.id}`,
         title: o.telegram || o.customer_email || 'no contact',
-        detail: `${formatDate(o.created_at)} · ${formatRub(o.total_price)}`,
-        aside: <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />,
+        detail: `${formatDate(o.created_at)} · ${statusLabel(o)}`,
+        aside: <span className="font-display text-sm">{formatRub(o.total_price)}</span>,
         image: o.order_items?.find((oi) => oi.item?.image_url)?.item?.image_url,
       }))
     const itemHits: Hit[] = (items ?? [])
