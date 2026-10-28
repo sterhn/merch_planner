@@ -28,6 +28,7 @@ import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
 import { backupDue } from '../lib/settings'
 import { saveCatalogView } from '../lib/viewState'
+import { monthChange } from '../lib/compare'
 import EmptyState from '../components/EmptyState'
 import { SkeletonDashboard } from '../components/Skeleton'
 import {
@@ -83,29 +84,6 @@ const QUICK_ACTIONS = [
 
 /** Unpaid this long, an order gets flagged as worth a nudge. */
 const UNPAID_NUDGE_DAYS = 7
-
-/**
- * "▲ 12% vs Sep" — this period against the month before. `upIsGood` sets the
- * colour: more revenue is good, more expenses isn't. Nothing to compare
- * against a month with none.
- */
-function changeVs(
-  current: number,
-  previous: { month: string; toDate: boolean },
-  previousValue: number,
-  upIsGood: boolean,
-) {
-  if (previousValue <= 0) return undefined
-  const { month } = previous
-  const pct = Math.round(((current - previousValue) / previousValue) * 100)
-  const short = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleDateString('en-US', {
-    month: 'short',
-  })
-  // Mid-month the comparison is with the same days of last month.
-  const title = previous.toDate ? `Compared with the same days of ${short}` : `Compared with all of ${short}`
-  if (pct === 0) return { text: `same as ${short}`, good: true, title }
-  return { text: `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs ${short}`, good: pct > 0 === upIsGood, title }
-}
 
 /** Search lives in the sidebar on desktop; mobile opens it from the dashboard header. */
 function SearchButton() {
@@ -450,7 +428,14 @@ export default function Dashboard() {
             icon={TrendingUp}
             format={formatRub}
             index={0}
-            change={stats.previous ? changeVs(stats.revenue, stats.previous, stats.previous.revenue, true) : undefined}
+            change={
+              stats.previous
+                ? monthChange(stats.revenue, stats.previous.revenue, stats.previous.month, {
+                    toDate: stats.previous.toDate,
+                    upIsGood: true,
+                  })
+                : undefined
+            }
           />
           <StatTile
             label="Expenses"
@@ -461,7 +446,10 @@ export default function Dashboard() {
             index={1}
             change={
               stats.previous
-                ? changeVs(stats.totalExpenses, stats.previous, stats.previous.totalExpenses, false)
+                ? monthChange(stats.totalExpenses, stats.previous.totalExpenses, stats.previous.month, {
+                    toDate: stats.previous.toDate,
+                    upIsGood: false,
+                  })
                 : undefined
             }
           />

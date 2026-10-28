@@ -5,6 +5,7 @@ import type { Collect, Item, OrderWithPhotos } from '../lib/types'
 import { useList } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import { haptic } from '../lib/haptics'
+import { searchAll } from '../lib/search'
 import Modal from './Modal'
 import SearchInput from './SearchInput'
 import { SECTIONS } from './sections'
@@ -25,8 +26,6 @@ interface Hit {
 const statusLabel = (o: OrderWithPhotos) =>
   o.delivered ? 'delivered' : o.sent ? 'shipped' : o.paid ? 'awaiting shipment' : 'unpaid'
 
-const norm = (s: string | null | undefined) => (s ?? '').toLowerCase()
-
 /**
  * One box for everything: orders (by contact or item), catalog items (name,
  * SKU, fandom, type) and collects (name, vendor). Mount it only while open —
@@ -44,45 +43,34 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
   const { data: collects } = useList<Collect>('collects', { orderBy: 'created_at', ascending: false })
 
   const [text, setText] = useState('')
-  const query = useDeferredValue(text.trim().toLowerCase())
+  const query = useDeferredValue(text)
 
   const groups = useMemo(() => {
-    if (!query) return []
-    // Orders from a matching customer first, then orders containing a matching item.
-    const byContact: OrderWithPhotos[] = []
-    const byItem: OrderWithPhotos[] = []
-    for (const o of orders ?? []) {
-      if (`${norm(o.telegram)} ${norm(o.customer_email)}`.includes(query)) byContact.push(o)
-      else if ((o.order_items ?? []).some((oi) => norm(oi.item?.name ?? oi.name_text).includes(query))) byItem.push(o)
-    }
-    const orderHits: Hit[] = [...byContact, ...byItem]
-      .map((o) => ({
-        key: o.id,
-        to: `/orders/${o.id}`,
-        title: o.telegram || o.customer_email || 'no contact',
-        detail: `${formatDate(o.created_at)} · ${statusLabel(o)}`,
-        aside: <span className="font-display text-sm">{formatRub(o.total_price)}</span>,
-        image: o.order_items?.find((oi) => oi.item?.image_url)?.item?.image_url,
-      }))
-    const itemHits: Hit[] = (items ?? [])
-      .filter((i) => `${norm(i.name)} ${norm(i.sku)} ${norm(i.fandom)} ${norm(i.type)}`.includes(query))
-      .map((i) => ({
-        key: i.id,
-        to: `/catalog?open=${i.id}`,
-        title: i.archived ? `${i.name} (archived)` : i.name,
-        detail: [i.type, i.fandom, `stock ${i.stock_qty ?? 0}`].filter(Boolean).join(' · '),
-        aside: <span className="font-display text-sm">{formatRub(i.sale_price)}</span>,
-        image: i.image_url,
-      }))
-    const collectHits: Hit[] = (collects ?? [])
-      .filter((c) => `${norm(c.name)} ${norm(c.vendor)}`.includes(query))
-      .map((c) => ({
-        key: c.id,
-        to: `/collects?open=${c.id}`,
-        title: c.name ?? '—',
-        detail: [c.vendor, c.received_at ? 'received' : c.paid ? 'paid' : 'not paid'].filter(Boolean).join(' · '),
-        aside: <span className="font-display text-sm">{formatRub(c.total_cost)}</span>,
-      }))
+    if (!query.trim()) return []
+    const found = searchAll(query, { orders, items, collects })
+    const orderHits: Hit[] = found.orders.map((o) => ({
+      key: o.id,
+      to: `/orders/${o.id}`,
+      title: o.telegram || o.customer_email || 'no contact',
+      detail: `${formatDate(o.created_at)} · ${statusLabel(o)}`,
+      aside: <span className="font-display text-sm">{formatRub(o.total_price)}</span>,
+      image: o.order_items?.find((oi) => oi.item?.image_url)?.item?.image_url,
+    }))
+    const itemHits: Hit[] = found.items.map((i) => ({
+      key: i.id,
+      to: `/catalog?open=${i.id}`,
+      title: i.archived ? `${i.name} (archived)` : i.name,
+      detail: [i.type, i.fandom, `stock ${i.stock_qty ?? 0}`].filter(Boolean).join(' · '),
+      aside: <span className="font-display text-sm">{formatRub(i.sale_price)}</span>,
+      image: i.image_url,
+    }))
+    const collectHits: Hit[] = found.collects.map((c) => ({
+      key: c.id,
+      to: `/collects?open=${c.id}`,
+      title: c.name ?? '—',
+      detail: [c.vendor, c.received_at ? 'received' : c.paid ? 'paid' : 'not paid'].filter(Boolean).join(' · '),
+      aside: <span className="font-display text-sm">{formatRub(c.total_cost)}</span>,
+    }))
     return [
       { section: SECTIONS.orders, hits: orderHits },
       { section: SECTIONS.catalog, hits: itemHits },
@@ -116,7 +104,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         />
       </form>
 
-      {!query ? (
+      {!query.trim() ? (
         <p className="py-6 text-center text-sm text-ink-muted">Find any order, item or collect by name.</p>
       ) : groups.length === 0 ? (
         <p className="py-6 text-center text-sm text-ink-muted">Nothing matches “{text.trim()}”.</p>

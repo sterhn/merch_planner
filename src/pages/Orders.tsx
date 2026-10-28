@@ -27,6 +27,7 @@ import { showToast } from '../lib/toast'
 import { openPrintWindow, orderListPageHtml } from '../lib/printOrder'
 import { chunk, fetchAllPages } from '../lib/paging'
 import { failureMessage } from '../lib/errorMessage'
+import { findCustomer, knownCustomers } from '../lib/customers'
 import {
   fandomGrouping,
   flushViewState,
@@ -332,22 +333,8 @@ export default function Orders() {
   }
 
   // Past Telegram handles, most recent first, for the new-order suggestions.
-  const customers = useMemo(() => {
-    const seen = new Map<string, { handle: string; count: number; last: string }>()
-    for (const o of orders ?? []) {
-      const handle = o.telegram?.trim()
-      if (!handle) continue
-      const key = handle.toLowerCase()
-      const known = seen.get(key)
-      if (known) known.count += 1
-      else seen.set(key, { handle, count: 1, last: o.created_at })
-    }
-    return [...seen.values()]
-  }, [orders])
-  const returning = useMemo(() => {
-    const typed = form.telegram.trim().toLowerCase()
-    return typed ? customers.find((c) => c.handle.toLowerCase() === typed) : undefined
-  }, [customers, form.telegram])
+  const customers = useMemo(() => knownCustomers(orders ?? []), [orders])
+  const returning = useMemo(() => findCustomer(customers, form.telegram), [customers, form.telegram])
 
   function save(e: React.FormEvent) {
     e.preventDefault()
