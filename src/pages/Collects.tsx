@@ -126,7 +126,7 @@ export default function Collects() {
   return (
     <div>
       <PageHeader title="Collects" icon={SECTIONS.collects.icon} tone={SECTIONS.collects.tone}>
-        <AddButton onClick={() => setEditing('new')}>Add collect</AddButton>
+        <AddButton onClick={() => setEditing('new')} data-shortcut="new" title="Shortcut: N">Add collect</AddButton>
       </PageHeader>
 
       <SearchInput

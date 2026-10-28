@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { CloudOff, DatabaseZap, LogOut } from 'lucide-react'
 import { useSignOut } from '../hooks/useAuth'
 import { useOnline } from '../hooks/useOnline'
+import { useShortcuts } from '../hooks/useShortcuts'
 import { SCHEMA_VERSION, useSchemaVersion } from '../hooks/useSettings'
 import { haptic } from '../lib/haptics'
 import BrandMark from './BrandMark'
@@ -83,6 +84,7 @@ const ACTIVE_PILL: Record<Tone, string> = {
 export default function Layout() {
   const signOut = useSignOut()
   const { pathname } = useLocation()
+  useShortcuts()
   // Only the top-level section, so opening an order doesn't re-fade the shell.
   const section = pathname.split('/')[1] ?? ''
 

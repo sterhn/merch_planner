@@ -358,7 +358,7 @@ export default function Orders() {
           disabled={printLoading || filtered.length === 0}
           className={printLoading ? '[&_svg]:animate-spin' : ''}
         />
-        <AddButton onClick={() => setAdding(true)}>New order</AddButton>
+        <AddButton onClick={() => setAdding(true)} data-shortcut="new" title="Shortcut: N">New order</AddButton>
       </PageHeader>
 
       {resumeOrder && (
@@ -534,16 +534,22 @@ export default function Orders() {
                   to={`/orders/${o.id}`}
                   className="tap flex min-w-0 flex-1 items-center justify-between gap-3 p-3.5"
                 >
-                  {photos.length > 0 && (
-                    <div className="flex shrink-0 flex-col gap-0.5">
-                      {photos.slice(0, 3).map((url, i) => (
-                        <img key={i} src={url} alt="" className="size-7 rounded-lg object-cover" loading="lazy" />
+                  {/* One photo fills the slot; more tile a 2×2 square, so a big
+                      order no longer makes its row three thumbnails tall. */}
+                  {photos.length === 1 ? (
+                    <img src={photos[0]} alt="" className="size-12 shrink-0 rounded-xl object-cover" loading="lazy" />
+                  ) : photos.length > 1 ? (
+                    <div className="grid size-12 shrink-0 grid-cols-2 gap-0.5">
+                      {photos.slice(0, photos.length > 4 ? 3 : 4).map((url, i) => (
+                        <img key={i} src={url} alt="" className="size-full rounded-md object-cover" loading="lazy" />
                       ))}
-                      {photos.length > 3 && (
-                        <span className="text-center text-xs text-ink-faint">+{photos.length - 3}</span>
+                      {photos.length > 4 && (
+                        <span className="grid place-items-center rounded-md bg-surface-2 text-3xs font-bold text-ink-muted">
+                          +{photos.length - 3}
+                        </span>
                       )}
                     </div>
-                  )}
+                  ) : null}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{who}</p>
                     <p className="truncate text-xs text-ink-muted">

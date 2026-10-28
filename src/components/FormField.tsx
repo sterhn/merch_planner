@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Plus, type LucideIcon } from 'lucide-react'
+import { Minus, Plus, type LucideIcon } from 'lucide-react'
 import { haptic } from '../lib/haptics'
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -118,5 +118,46 @@ export function IconButton({
     >
       <Icon size={size === 11 ? 18 : 17} />
     </button>
+  )
+}
+
+/**
+ * Whole-number field with − / + buttons either side, for quantities: one tap
+ * instead of summoning the keyboard for "2". Typing still works.
+ */
+export function QtyStepper({
+  label,
+  value,
+  onChange,
+  min = 1,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  min?: number
+}) {
+  const n = Number.parseInt(value, 10)
+  const current = Number.isFinite(n) ? n : min
+  const step = (delta: number) => {
+    haptic(5)
+    onChange(String(Math.max(min, current + delta)))
+  }
+  return (
+    <div className="mb-3">
+      <span className="mb-1.5 ml-1 block text-xs font-bold text-ink-muted">{label}</span>
+      <div className="flex items-center gap-1">
+        <IconButton icon={Minus} label={`${label}: one less`} onClick={() => step(-1)} disabled={current <= min} />
+        <input
+          className={`${inputClass} min-w-0 text-center tabular-nums`}
+          type="number"
+          min={min}
+          inputMode="numeric"
+          aria-label={label}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <IconButton icon={Plus} label={`${label}: one more`} onClick={() => step(1)} />
+      </div>
+    </div>
   )
 }

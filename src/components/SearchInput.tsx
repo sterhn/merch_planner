@@ -23,6 +23,8 @@ export default function SearchInput({
       <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
       <input
         type="search"
+        enterKeyHint="search"
+        aria-keyshortcuts="/"
         aria-label={label}
         placeholder={placeholder}
         value={value}

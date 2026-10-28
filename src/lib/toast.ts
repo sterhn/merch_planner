@@ -22,12 +22,18 @@ export function dismissToast(id: number) {
   emit()
 }
 
-/** Shows a toast for 5 s. An `action` (e.g. Undo) renders as a button on it. */
+/** At most this many on screen; a burst of saves shouldn't stack up a tower. */
+const MAX_VISIBLE = 3
+
+/**
+ * Shows a toast for 5 s — 8 s when it carries an `action` (e.g. Undo), which
+ * renders as a button on it and needs time to be read and reached.
+ */
 export function showToast(text: string, action?: ToastAction) {
   const id = ++nextId
-  messages = [...messages, { id, text, action }]
+  messages = [...messages, { id, text, action }].slice(-MAX_VISIBLE)
   emit()
-  setTimeout(() => dismissToast(id), 5000)
+  setTimeout(() => dismissToast(id), action ? 8000 : 5000)
 }
 
 export function subscribeToasts(listener: (msgs: ToastMessage[]) => void): () => void {

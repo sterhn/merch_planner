@@ -169,7 +169,7 @@ export default function Expenses() {
   return (
     <div>
       <PageHeader title="Expenses" icon={SECTIONS.expenses.icon} tone={SECTIONS.expenses.tone}>
-        <AddButton onClick={openAdd}>Add expense</AddButton>
+        <AddButton onClick={openAdd} data-shortcut="new" title="Shortcut: N">Add expense</AddButton>
       </PageHeader>
 
       <QueryState

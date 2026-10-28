@@ -164,7 +164,7 @@ export default function Catalog() {
   return (
     <div>
       <PageHeader title="Catalog" icon={SECTIONS.catalog.icon} tone={SECTIONS.catalog.tone}>
-        <AddButton onClick={() => openEditor('new')}>Add item</AddButton>
+        <AddButton onClick={() => openEditor('new')} data-shortcut="new" title="Shortcut: N">Add item</AddButton>
       </PageHeader>
       <SearchInput className="mb-3" label="Search catalog" value={view.search} onChange={(search) => updateView({ search })} />
 

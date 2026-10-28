@@ -11,7 +11,7 @@ import { importedOrderRows, parseImportCode } from '../../lib/importCode'
 import { showToast } from '../../lib/toast'
 import CatalogPicker from '../../components/CatalogPicker'
 import Modal from '../../components/Modal'
-import { Field, inputClass, PrimaryButton, SecondaryButton, textareaClass } from '../../components/FormField'
+import { Field, inputClass, PrimaryButton, QtyStepper, SecondaryButton, textareaClass } from '../../components/FormField'
 
 const EMPTY_LINE = { item_id: '', name_text: '', qty: '1', unit_price: '' }
 
@@ -105,9 +105,7 @@ export function AddLineSheet({
           </Field>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Qty">
-            <input className={inputClass} type="number" min="1" inputMode="numeric" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          </Field>
+          <QtyStepper label="Qty" value={form.qty} onChange={(qty) => setForm({ ...form, qty })} />
           <Field label="Unit price ₽">
             <input className={inputClass} type="text" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
           </Field>
@@ -168,9 +166,7 @@ export function EditLineSheet({
           </Field>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Qty">
-            <input className={inputClass} type="number" min="1" inputMode="numeric" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          </Field>
+          <QtyStepper label="Qty" value={form.qty} onChange={(qty) => setForm({ ...form, qty })} />
           <Field label="Unit price ₽">
             <input className={inputClass} type="text" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
           </Field>
