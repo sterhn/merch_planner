@@ -12,6 +12,7 @@ export default function StatTile({
   icon: Icon,
   format,
   index = 0,
+  change,
 }: {
   label: string
   value: number
@@ -20,6 +21,8 @@ export default function StatTile({
   format?: (n: number) => string
   /** Staggers the entry animation when several tiles sit in a row. */
   index?: number
+  /** A comparison line under the label, e.g. "▲ 12% vs Sep"; `good` picks its colour. */
+  change?: { text: string; good: boolean; title?: string }
 }) {
   return (
     <div
@@ -36,6 +39,11 @@ export default function StatTile({
           <AnimatedNumber value={value} format={format} />
         </p>
         <p className="mt-0.5 text-2xs font-semibold text-ink-faint">{label}</p>
+        {change && (
+          <p title={change.title} className={`truncate text-2xs font-bold ${change.good ? 'text-good' : 'text-bad'}`}>
+            {change.text}
+          </p>
+        )}
       </div>
     </div>
   )

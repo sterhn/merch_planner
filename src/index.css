@@ -266,6 +266,32 @@ body {
   }
 }
 
+/* A theme picked in Settings (lib/theme) beats the system one: same foils,
+   keyed on data-theme. More specific than the media-query rules above, and
+   landscape listed second so it wins when both match. */
+:root[data-theme='light'] .backdrop-holo {
+  background:
+    linear-gradient(var(--holo-veil), var(--holo-veil)),
+    url('./assets/holo-light.webp') center / cover no-repeat;
+}
+:root[data-theme='dark'] .backdrop-holo {
+  background:
+    linear-gradient(var(--holo-veil), var(--holo-veil)),
+    url('./assets/holo-dark.webp') center / cover no-repeat;
+}
+@media (orientation: landscape) {
+  :root[data-theme='light'] .backdrop-holo {
+    background:
+      linear-gradient(var(--holo-veil), var(--holo-veil)),
+      url('./assets/holo-light-wide.webp') center / cover no-repeat;
+  }
+  :root[data-theme='dark'] .backdrop-holo {
+    background:
+      linear-gradient(var(--holo-veil), var(--holo-veil)),
+      url('./assets/holo-dark-wide.webp') center / cover no-repeat;
+  }
+}
+
 ::selection {
   background: color-mix(in oklch, var(--color-brand) 28%, transparent);
 }

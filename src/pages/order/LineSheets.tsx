@@ -11,7 +11,7 @@ import { importedOrderRows, parseImportCode } from '../../lib/importCode'
 import { showToast } from '../../lib/toast'
 import CatalogPicker from '../../components/CatalogPicker'
 import Modal from '../../components/Modal'
-import { Field, inputClass, PrimaryButton, SecondaryButton, textareaClass } from '../../components/FormField'
+import { Field, inputClass, PrimaryButton, QtyStepper, SecondaryButton, textareaClass } from '../../components/FormField'
 
 const EMPTY_LINE = { item_id: '', name_text: '', qty: '1', unit_price: '' }
 
@@ -23,6 +23,7 @@ export function AddLineSheet({
   itemNames,
   stockFor,
   nextPosition,
+  lines,
 }: {
   open: boolean
   onClose: () => void
@@ -32,12 +33,17 @@ export function AddLineSheet({
   itemNames: ReadonlyMap<string, Item>
   stockFor: (item: Item) => number
   nextPosition: number
+  /** The order's current lines: picking an item that's already on it adds to that line. */
+  lines: OrderItem[]
 }) {
   // Line writes refresh orders too (the list embeds lines for its thumbnails
   // and search, and the database recomputes the total) and items (a line on a
   // sent order moves stock).
+  const qc = useQueryClient()
   const insertLine = useInsert<OrderItem>('order_items', ['orders', 'items'])
+  const updateLine = useUpdate<OrderItem>('order_items', ['orders', 'items'])
   const [form, setForm] = useState(EMPTY_LINE)
+  const busy = insertLine.isPending || updateLine.isPending
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -45,21 +51,49 @@ export function AddLineSheet({
     // reopen-the-sheet round trip per line.
     const another = (e.nativeEvent as SubmitEvent).submitter?.dataset.next === '1'
     const picked = form.item_id ? itemNames.get(form.item_id) : undefined
+    const qty = parseCount(form.qty, 1) ?? 1
+    const unitPrice = parseMoney(form.unit_price) ?? picked?.sale_price ?? null
+    const done = (label: string) => {
+      setForm(EMPTY_LINE)
+      if (another) showToast(label)
+      else onClose()
+    }
+    // The same item at the same price is already on the order: one line ×3
+    // reads better than three lines ×1, on screen and on the printout. Read
+    // from the cache, which each add below updates at once — the `lines` prop
+    // lags until the refetch, and a quick second "Add & next" would otherwise
+    // count from the old quantity and lose one.
+    const current = qc.getQueryData<OrderItem[]>(['order_items', orderId]) ?? lines
+    const same = picked && current.find((l) => l.item_id === picked.id && l.unit_price === unitPrice)
+    if (same) {
+      const total = same.qty + qty
+      updateLine.mutate(
+        { id: same.id, values: { qty: total } },
+        {
+          onSuccess: () => {
+            qc.setQueryData<OrderItem[]>(['order_items', orderId], (rows) =>
+              rows?.map((r) => (r.id === same.id ? { ...r, qty: total } : r)),
+            )
+            done(`${picked.name} ×${total}`)
+          },
+        },
+      )
+      return
+    }
     insertLine.mutate(
       {
         order_id: orderId,
         item_id: form.item_id || null,
         name_text: form.name_text || picked?.name || null,
         category: picked?.type ?? null,
-        qty: parseCount(form.qty, 1) ?? 1,
-        unit_price: parseMoney(form.unit_price) ?? picked?.sale_price ?? null,
+        qty,
+        unit_price: unitPrice,
         position: nextPosition,
       },
       {
-        onSuccess: () => {
-          setForm(EMPTY_LINE)
-          if (another) showToast(`Added ${picked?.name || form.name_text || 'item'}`)
-          else onClose()
+        onSuccess: (created) => {
+          qc.setQueryData<OrderItem[]>(['order_items', orderId], (rows) => (rows ? [...rows, created] : rows))
+          done(`Added ${picked?.name || form.name_text || 'item'}`)
         },
       },
     )
@@ -89,18 +123,16 @@ export function AddLineSheet({
           </Field>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Qty">
-            <input className={inputClass} type="number" min="1" inputMode="numeric" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          </Field>
+          <QtyStepper label="Qty" value={form.qty} onChange={(qty) => setForm({ ...form, qty })} />
           <Field label="Unit price ₽">
             <input className={inputClass} type="text" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
           </Field>
         </div>
         <div className="flex gap-2">
-          <SecondaryButton type="submit" data-next="1" disabled={insertLine.isPending} className="h-12 shrink-0">
+          <SecondaryButton type="submit" data-next="1" disabled={busy} className="h-12 shrink-0">
             Add &amp; next
           </SecondaryButton>
-          <PrimaryButton type="submit" disabled={insertLine.isPending}>
+          <PrimaryButton type="submit" disabled={busy}>
             Add
           </PrimaryButton>
         </div>
@@ -152,9 +184,7 @@ export function EditLineSheet({
           </Field>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Qty">
-            <input className={inputClass} type="number" min="1" inputMode="numeric" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          </Field>
+          <QtyStepper label="Qty" value={form.qty} onChange={(qty) => setForm({ ...form, qty })} />
           <Field label="Unit price ₽">
             <input className={inputClass} type="text" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
           </Field>

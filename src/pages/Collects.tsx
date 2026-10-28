@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Printer, AlertTriangle, PackageCheck, Truck, Wallet } from 'lucide-react'
 import type { Collect, CollectItem, Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -10,20 +10,34 @@ import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
-import { useLaunchFlag } from '../hooks/useLaunchFlag'
+import { useLaunchFlag, useLaunchParam } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
 import StatusBadge from '../components/StatusBadge'
 import { AddButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import CollectEditor from './collects/CollectEditor'
 
-type StatusFilter = 'all' | 'pending' | 'received'
+type StatusFilter = 'all' | 'unpaid' | 'pending' | 'received'
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'All' },
+  { key: 'unpaid', label: 'To pay' },
   { key: 'pending', label: 'Not received' },
   { key: 'received', label: 'Received' },
 ]
+
+function matchesStatus(c: Collect, filter: StatusFilter): boolean {
+  switch (filter) {
+    case 'unpaid':
+      return !c.paid
+    case 'pending':
+      return !c.received_at
+    case 'received':
+      return Boolean(c.received_at)
+    case 'all':
+      return true
+  }
+}
 
 /** A small date chip: red when the date has passed and still matters. */
 function DateChip({ icon: Icon, label, date, late }: { icon: typeof Wallet; label: string; date: string; late: boolean }) {
@@ -57,6 +71,10 @@ export default function Collects() {
     return STATUS_FILTERS.some((f) => f.key === saved) ? (saved as StatusFilter) : 'all'
   })
   const launchNew = useLaunchFlag()
+  // `?items=a,b,c` (the dashboard's "Plan a reprint") starts the new collect
+  // with those catalog items as positions.
+  const launchItems = useLaunchParam('items')
+  const [draftItems, setDraftItems] = useState<string[]>(() => launchItems?.split(',').filter(Boolean) ?? [])
   const [editing, setEditing] = useState<Collect | 'new' | null>(launchNew ? 'new' : null)
 
   // `?open=<id>` (from the dashboard or an expense row) opens that collect —
@@ -64,18 +82,21 @@ export default function Collects() {
   const [searchParams, setSearchParams] = useSearchParams()
   const openId = searchParams.get('open')
   // Remembered so the link can't reopen the sheet in the moment between
-  // closing it and the URL losing its ?open.
-  const [dismissedId, setDismissedId] = useState<string | null>(null)
+  // closing it and the URL losing its ?open — by location key, not id, so the
+  // same collect opened again later (from search, say) still opens.
+  const { key: locationKey } = useLocation()
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
   const linked =
-    openId && openId !== dismissedId && editing === null && collectItems
+    openId && locationKey !== dismissedKey && editing === null && collectItems
       ? collects?.find((c) => c.id === openId)
       : undefined
   const current = editing ?? linked ?? null
 
   function closeEditor() {
     setEditing(null)
+    setDraftItems([])
     if (openId) {
-      setDismissedId(openId)
+      setDismissedKey(locationKey)
       setSearchParams(
         (p) => {
           p.delete('open')
@@ -102,6 +123,14 @@ export default function Collects() {
     return m
   }, [collectItems])
 
+  // What each item cost to print last time, to prefill a reprint.
+  const lastPrintCost = useMemo(() => {
+    const m = new Map<string, number>()
+    const rows = [...(collectItems ?? [])].sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+    for (const r of rows) if (r.item_id && r.print_cost != null) m.set(r.item_id, r.print_cost)
+    return m
+  }, [collectItems])
+
   function positionLabel(p: CollectItem): string {
     const name = (p.item_id ? itemById.get(p.item_id)?.name : null) ?? p.name_text ?? '—'
     return p.qty > 1 ? `${name} ×${p.qty}` : name
@@ -110,23 +139,42 @@ export default function Collects() {
   const today = todayISO()
 
   // Months of runs accumulate; search covers name, vendor and position names.
-  const filtered = useMemo(() => {
+  // Search narrows the pool; the status chips then split it, each showing how
+  // many it would leave (like the Orders list).
+  const pool = useMemo(() => {
     const q = search.trim().toLowerCase()
+    if (!q) return collects ?? []
     return (collects ?? []).filter((c) => {
-      if (statusFilter === 'pending' && c.received_at) return false
-      if (statusFilter === 'received' && !c.received_at) return false
-      if (!q) return true
       const positionNames = (positionsByCollect.get(c.id) ?? [])
         .map((p) => ((p.item_id ? itemById.get(p.item_id)?.name : null) ?? p.name_text ?? ''))
         .join(' ')
       return `${c.name ?? ''} ${c.vendor ?? ''} ${positionNames}`.toLowerCase().includes(q)
     })
-  }, [collects, search, statusFilter, positionsByCollect, itemById])
+  }, [collects, search, positionsByCollect, itemById])
+
+  const counts = useMemo(() => {
+    const out = {} as Record<StatusFilter, number>
+    for (const f of STATUS_FILTERS) out[f.key] = pool.filter((c) => matchesStatus(c, f.key)).length
+    return out
+  }, [pool])
+
+  const filtered = useMemo(() => pool.filter((c) => matchesStatus(c, statusFilter)), [pool, statusFilter])
+
+  // Still owed across every collect, whatever the filter.
+  const toPay = useMemo(() => {
+    const unpaid = (collects ?? []).filter((c) => !c.paid)
+    return { count: unpaid.length, total: unpaid.reduce((s, c) => s + (c.total_cost ?? 0), 0) }
+  }, [collects])
 
   return (
     <div>
-      <PageHeader title="Collects" icon={SECTIONS.collects.icon} tone={SECTIONS.collects.tone}>
-        <AddButton onClick={() => setEditing('new')}>Add collect</AddButton>
+      <PageHeader
+        title="Collects"
+        subtitle={toPay.count > 0 ? `${formatRub(toPay.total)} still to pay on ${toPay.count}` : undefined}
+        icon={SECTIONS.collects.icon}
+        tone={SECTIONS.collects.tone}
+      >
+        <AddButton onClick={() => setEditing('new')} data-shortcut="new" title="Shortcut: N">Add collect</AddButton>
       </PageHeader>
 
       <SearchInput
@@ -149,6 +197,7 @@ export default function Collects() {
               setStatusFilter(f.key)
               saveCollectsView({ status: f.key })
             }}
+            count={counts[f.key]}
           >
             {f.label}
           </FilterChip>
@@ -218,11 +267,15 @@ export default function Collects() {
         })}
       </div>
 
-      {current !== null && (
+      {/* A reprint waits for past positions, which prefill its print costs. */}
+      {current !== null && (current !== 'new' || draftItems.length === 0 || collectItems) && (
         <CollectEditor
           key={current === 'new' ? 'new' : current.id}
           collect={current}
           positions={current === 'new' ? [] : (positionsByCollect.get(current.id) ?? [])}
+          draftItems={
+            current === 'new' ? draftItems.map((id) => ({ item_id: id, print_cost: lastPrintCost.get(id) ?? null })) : []
+          }
           items={items ?? []}
           onClose={closeEditor}
         />

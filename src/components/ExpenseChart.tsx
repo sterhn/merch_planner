@@ -56,7 +56,7 @@ export default function ExpenseChart({ months }: { months: MonthTotal[] }) {
         <p className="font-display text-sm">{formatMonth(active.month)}</p>
         <p className="font-display text-sm text-bad">−{formatRub(active.total)}</p>
       </div>
-      <div ref={containerRef} className="overflow-x-auto">
+      <div ref={containerRef} className="overflow-x-auto" tabIndex={0} role="region" aria-label="Monthly expenses, scrollable">
         <svg
           width={width}
           height={height}

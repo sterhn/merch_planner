@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Archive, LayoutGrid, List, Minus, Plus, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -19,6 +20,8 @@ import SearchInput from '../components/SearchInput'
 import { AddButton, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import ItemEditor from './catalog/ItemEditor'
+import { useReveal } from '../hooks/useReveal'
+import RevealMore from '../components/RevealMore'
 
 function ItemImage({ src, type }: { src: string | null; type: string | null }) {
   if (src) {
@@ -91,7 +94,33 @@ export default function Catalog() {
   const nudgeStock = useStockNudge()
   const launchNew = useLaunchFlag()
   const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
-  const [viewing, setViewing] = useState<Item | null>(null)
+  // Set while the "new" editor is a duplicate of this item.
+  const [copyOf, setCopyOf] = useState<Item | undefined>()
+  const [picked, setPicked] = useState<Item | null>(null)
+
+  // `?open=<id>` (from search) shows that item's card. Remembered once closed
+  // so the link can't reopen it before the URL loses its ?open.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openId = searchParams.get('open')
+  // Which visit's link was dismissed (by location key, not id): the same id
+  // opened again later — from search, say — is a new visit and opens again.
+  const { key: locationKey } = useLocation()
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
+  const linked = openId && locationKey !== dismissedKey && picked === null ? items?.find((i) => i.id === openId) : undefined
+  const viewing = picked ?? linked ?? null
+  function setViewing(item: Item | null) {
+    setPicked(item)
+    if (item === null && openId) {
+      setDismissedKey(locationKey)
+      setSearchParams(
+        (p) => {
+          p.delete('open')
+          return p
+        },
+        { replace: true },
+      )
+    }
+  }
 
   const itemById = useMemo(() => {
     const m = new Map<string, Item>()
@@ -126,12 +155,28 @@ export default function Catalog() {
     return Array.from(s).sort()
   }, [items])
 
+  // What's on the shelves: live items, bundles left out (their stock is their parts').
+  const totals = useMemo(() => {
+    let pieces = 0
+    let value = 0
+    for (const i of items ?? []) {
+      if (i.archived) continue
+      if (bundleGroups.has(i.id)) continue
+      const stock = Math.max(0, i.stock_qty ?? 0)
+      pieces += stock
+      value += stock * (i.cost_price ?? 0)
+    }
+    return { pieces, value }
+  }, [items, bundleGroups])
+
   const archivedCount = useMemo(() => (items ?? []).filter((i) => i.archived).length, [items])
   // Leaving the archive view once it's empty (the last item was restored).
   const showArchived = view.archived && archivedCount > 0
 
+  // Typing stays snappy on a big catalog: the filter catches up a frame later.
+  const search = useDeferredValue(view.search)
   const filtered = useMemo(() => {
-    const q = view.search.trim().toLowerCase()
+    const q = search.trim().toLowerCase()
     const matching = (items ?? []).filter((i) => {
       if (Boolean(i.archived) !== showArchived) return false
       if (view.type && i.type !== view.type) return false
@@ -145,16 +190,32 @@ export default function Catalog() {
       )
     })
     return sortCatalog(matching, sort, (i) => canMakeById.get(i.id) ?? i.stock_qty ?? 0)
-  }, [items, view, showArchived, sort, canMakeById])
+  }, [items, view.type, view.fandom, search, showArchived, sort, canMakeById])
+
+  const reveal = useReveal(
+    filtered.length,
+    `${search}|${view.type}|${view.fandom}|${showArchived}|${sort}|${view.layout}`,
+  )
+  const shown = filtered.slice(0, reveal.limit)
 
   function openEditor(item: Item | 'new') {
+    setCopyOf(undefined)
     setEditing(item)
   }
 
   return (
     <div>
-      <PageHeader title="Catalog" icon={SECTIONS.catalog.icon} tone={SECTIONS.catalog.tone}>
-        <AddButton onClick={() => openEditor('new')}>Add item</AddButton>
+      <PageHeader
+        title="Catalog"
+        subtitle={
+          totals.pieces > 0
+            ? `${totals.pieces} pcs · ${formatRub(Math.round(totals.value))} at cost`
+            : undefined
+        }
+        icon={SECTIONS.catalog.icon}
+        tone={SECTIONS.catalog.tone}
+      >
+        <AddButton onClick={() => openEditor('new')} data-shortcut="new" title="Shortcut: N">Add item</AddButton>
       </PageHeader>
       <SearchInput className="mb-3" label="Search catalog" value={view.search} onChange={(search) => updateView({ search })} />
 
@@ -238,7 +299,7 @@ export default function Catalog() {
 
       {view.layout === 'grid' ? (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-          {filtered.map((item) => {
+          {shown.map((item) => {
             const canMake = canMakeById.get(item.id) ?? null
             const stockShown = canMake ?? item.stock_qty ?? 0
             return (
@@ -287,7 +348,7 @@ export default function Catalog() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((item) => {
+          {shown.map((item) => {
             const canMake = canMakeById.get(item.id) ?? null
             const parts = bundleMap.get(item.id) ?? []
             const stockShown = canMake ?? item.stock_qty ?? 0
@@ -340,10 +401,18 @@ export default function Catalog() {
         </div>
       )}
 
+      {reveal.hasMore && <RevealMore onReveal={reveal.more} remaining={filtered.length - reveal.limit} />}
+
       {editing !== null && (
         <ItemEditor
-          key={editing === 'new' ? 'new' : editing.id}
+          key={editing === 'new' ? `new-${copyOf?.id ?? ''}` : editing.id}
           item={editing}
+          copyOf={editing === 'new' ? copyOf : undefined}
+          onDuplicate={(item) => {
+            haptic()
+            setCopyOf(item)
+            setEditing('new')
+          }}
           items={items ?? []}
           rawBundles={rawBundles ?? []}
           types={types}

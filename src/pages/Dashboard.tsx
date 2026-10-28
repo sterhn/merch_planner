@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import type { LayoutContext } from '../components/Layout'
 import {
   AlertTriangle,
   CalendarClock,
@@ -11,6 +12,7 @@ import {
   MoonStar,
   PackageCheck,
   PartyPopper,
+  Search,
   Send,
   Sparkle,
   Sun,
@@ -25,6 +27,8 @@ import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/typ
 import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
 import { backupDue } from '../lib/settings'
+import { saveCatalogView } from '../lib/viewState'
+import { monthChange, periodTotals } from '../lib/compare'
 import EmptyState from '../components/EmptyState'
 import { SkeletonDashboard } from '../components/Skeleton'
 import {
@@ -80,6 +84,21 @@ const QUICK_ACTIONS = [
 
 /** Unpaid this long, an order gets flagged as worth a nudge. */
 const UNPAID_NUDGE_DAYS = 7
+
+/** Search lives in the sidebar on desktop; mobile opens it from the dashboard header. */
+function SearchButton() {
+  const { openSearch } = useOutletContext<LayoutContext>()
+  return (
+    <button
+      type="button"
+      onClick={openSearch}
+      aria-label="Search everything"
+      className="tap grid size-11 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink md:hidden"
+    >
+      <Search size={19} />
+    </button>
+  )
+}
 
 /** Settings (and sign-out) live in the sidebar on desktop; mobile reaches them here. */
 function SettingsLink() {
@@ -208,28 +227,29 @@ export default function Dashboard() {
   }, [orders, expenses, shelf])
 
   const stats = useMemo(() => {
-    const inPeriod = (m: string | null) => period === 'all' || m === period
-    // Counted in the month the money came in. Orders paid before migration 010
-    // have no paid_at, so they fall back to the month they were created.
-    const orderRevenue = (orders ?? [])
-      .filter((o) => o.paid && inPeriod(localMonth(paidMonthSource(o))))
-      .reduce((s, o) => s + (o.total_price ?? 0), 0)
-    // The shelf page is archived, but its historical income still counts —
-    // folded into Revenue so past months (and the all-time net) stay truthful.
-    const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
-    const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
-    const revenue = orderRevenue + shelfIncome
-    const unpaid = (orders ?? []).filter((o) => !o.paid)
+    const data = { orders: orders ?? [], shelf: shelf ?? [], expenses: expenses ?? [] }
+    const { revenue, expenses: totalExpenses } = periodTotals(data, period)
+    // The month before, for the "vs last month" lines — only when it has data.
+    const prevPeriod = period === 'all' ? null : periods[periods.indexOf(period) - 1]
+    // A month still under way is compared with the same days of the one before,
+    // not all of it — otherwise every month looks down until its last week.
     const today = todayISO()
+    const sameDays = period === today.slice(0, 7) ? Number(today.slice(8, 10)) : 31
+    const previous =
+      prevPeriod && prevPeriod !== 'all'
+        ? { month: prevPeriod, toDate: sameDays < 31, ...periodTotals(data, prevPeriod, sameDays) }
+        : null
+    const unpaid = (orders ?? []).filter((o) => !o.paid)
     return {
       revenue,
       totalExpenses,
       net: revenue - totalExpenses,
+      previous,
       unpaid: unpaid.length,
       unpaidStale: unpaid.filter((o) => daysBetween(localISODate(o.created_at), today) >= UNPAID_NUDGE_DAYS).length,
       toSend: (orders ?? []).filter((o) => o.paid && !o.sent).length,
     }
-  }, [orders, shelf, expenses, period])
+  }, [orders, shelf, expenses, period, periods])
 
   // Two dates per collect: pay by (deadline) and arrives by. Overdue payments
   // and late arrivals stay listed — those are the ones that need you most.
@@ -265,7 +285,6 @@ export default function Dashboard() {
     return (items ?? [])
       .filter((i) => !i.archived && !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= threshold)
       .sort((a, b) => (a.stock_qty ?? 0) - (b.stock_qty ?? 0))
-      .slice(0, 4)
   }, [items, rawBundles, threshold])
 
   const showBackupNudge = !settingsLoading && backupDue(settings.lastBackupAt, now)
@@ -290,6 +309,7 @@ export default function Dashboard() {
       icon={DAY_ICON[part]}
       tone={DAY_TONE[part]}
     >
+      <SearchButton />
       <SettingsLink />
     </PageHeader>
   )
@@ -380,8 +400,38 @@ export default function Dashboard() {
       <div className="mb-3 flex flex-col gap-2">
         <HeroCard value={stats.net} revenue={stats.revenue} />
         <div className="grid grid-cols-2 gap-2">
-          <StatTile label="Revenue" value={stats.revenue} tone="good" icon={TrendingUp} format={formatRub} index={0} />
-          <StatTile label="Expenses" value={stats.totalExpenses} tone="bad" icon={TrendingDown} format={formatRub} index={1} />
+          <StatTile
+            label="Revenue"
+            value={stats.revenue}
+            tone="good"
+            icon={TrendingUp}
+            format={formatRub}
+            index={0}
+            change={
+              stats.previous
+                ? monthChange(stats.revenue, stats.previous.revenue, stats.previous.month, {
+                    toDate: stats.previous.toDate,
+                    upIsGood: true,
+                  })
+                : undefined
+            }
+          />
+          <StatTile
+            label="Expenses"
+            value={stats.totalExpenses}
+            tone="bad"
+            icon={TrendingDown}
+            format={formatRub}
+            index={1}
+            change={
+              stats.previous
+                ? monthChange(stats.totalExpenses, stats.previous.expenses, stats.previous.month, {
+                    toDate: stats.previous.toDate,
+                    upIsGood: false,
+                  })
+                : undefined
+            }
+          />
         </div>
       </div>
 
@@ -431,15 +481,23 @@ export default function Dashboard() {
               </span>
             }
             action={
-              <Link to="/catalog" className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand">
-                Catalog
+              // Opens the live catalog sorted low-stock first, so the rest of
+              // the list continues where this card stops.
+              <Link
+                to="/catalog"
+                onClick={() =>
+                  saveCatalogView({ sort: 'stock', search: '', type: null, fandom: null, archived: false })
+                }
+                className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand"
+              >
+                {lowStock.length > 4 ? `All ${lowStock.length}` : 'Catalog'}
               </Link>
             }
             className="animate-pop"
             style={{ animationDelay: '480ms' }}
           >
             <div className="space-y-1.5">
-              {lowStock.map((i) => (
+              {lowStock.slice(0, 4).map((i) => (
                 <div key={i.id} className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     {i.image_url ? (
@@ -461,6 +519,16 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Start a collect with these items as its positions. */}
+            <Link
+              to={`/collects?new=1&items=${lowStock.slice(0, 30).map((i) => i.id).join(',')}`}
+              onClick={() => haptic(5)}
+              className="tap mt-2 flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-brand/40 text-sm font-bold text-brand hover:bg-brand/10"
+            >
+              <SECTIONS.collects.icon size={15} />
+              Plan a reprint
+            </Link>
+
           </Card>
         )}
 

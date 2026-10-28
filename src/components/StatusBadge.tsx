@@ -15,6 +15,8 @@ export default function StatusBadge({
   // the 4.5:1 small bold text needs.
   const cls = on ? 'bg-good/10 text-good' : 'bg-surface-2 text-ink-muted'
   if (onClick) {
+    // Solid when on: the translucent tint read as muddy over the foil (2.3:1).
+    const toggle = on ? 'bg-good text-on-good shadow-card' : 'glass text-ink-muted'
     return (
       <button
         onClick={(e) => {
@@ -23,7 +25,8 @@ export default function StatusBadge({
           if (!on) celebrate(e.currentTarget)
           onClick()
         }}
-        className={`tap inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold ${cls}`}
+        aria-pressed={on}
+        className={`tap inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold ${toggle}`}
       >
         {on && <Check size={14} strokeWidth={3} className="animate-boing" />}
         {label}

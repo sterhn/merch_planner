@@ -16,8 +16,16 @@ const modalStack: symbol[] = []
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+/** Pulled down this far (px), or flicked faster than DISMISS_SPEED, the sheet closes. */
+const DISMISS_DISTANCE = 110
+const DISMISS_SPEED = 0.6
+
 export default function Modal({ title, open, onClose, children }: ModalProps) {
   const [closing, setClosing] = useState(false)
+  // How far the sheet is being dragged down by its grab area (touch only).
+  const [drag, setDrag] = useState<number | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef({ y: 0, t: 0 })
   const closingRef = useRef(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -34,6 +42,8 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
     closingRef.current = false
     clearTimeout(closeTimer.current)
     setClosing(false)
+    setDrag(null)
+    setDragging(false)
     onCloseRef.current()
   }, [])
 
@@ -47,7 +57,9 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
 
   useEffect(() => {
     if (!open) return
-    panelRef.current?.focus()
+    // Unless a field inside already took focus (autoFocus), focus the sheet.
+    const panel = panelRef.current
+    if (panel && !panel.contains(document.activeElement)) panel.focus()
     const token = Symbol('modal')
     modalStack.push(token)
     const prevOverflow = document.body.style.overflow
@@ -95,6 +107,38 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
 
   if (!open && !closing) return null
 
+  // Drag the handle / title row down to dismiss, like a native sheet. The
+  // closing animation has only an end keyframe, so it carries on from wherever
+  // the finger let go.
+  const dragHandlers = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse' || closingRef.current) return
+      if ((e.target as HTMLElement).closest('button')) return
+      dragStart.current = { y: e.clientY, t: performance.now() }
+      e.currentTarget.setPointerCapture(e.pointerId)
+      setDragging(true)
+      setDrag(0)
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (!dragging) return
+      const dy = e.clientY - dragStart.current.y
+      // Resist pulling up past the resting point.
+      setDrag(dy > 0 ? dy : dy / 6)
+    },
+    onPointerUp: () => {
+      if (!dragging || drag === null) return
+      setDragging(false)
+      const speed = drag / Math.max(1, performance.now() - dragStart.current.t)
+      if (drag > DISMISS_DISTANCE || (drag > 24 && speed > DISMISS_SPEED)) requestClose()
+      // Not far enough: glide back into place.
+      else setDrag(0)
+    },
+    onPointerCancel: () => {
+      setDragging(false)
+      setDrag(0)
+    },
+  }
+
   return (
     <div
       className={`fixed inset-0 z-30 flex items-end justify-center bg-scrim backdrop-blur-sm md:items-center ${
@@ -112,20 +156,32 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
           closing ? 'animate-sheet-down md:animate-fade-out' : 'animate-sheet-up md:animate-pop'
         }`}
         onClick={(e) => e.stopPropagation()}
+        style={
+          drag !== null
+            ? {
+                transform: `translateY(${drag}px)`,
+                transition: dragging || closing ? 'none' : 'transform 250ms cubic-bezier(0.32, 0.72, 0, 1)',
+              }
+            : undefined
+        }
         onAnimationEnd={() => {
           if (closingRef.current) finishClose()
         }}
       >
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line md:hidden" aria-hidden />
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg">{title}</h2>
-          <button
-            onClick={requestClose}
-            className="tap flex size-10 items-center justify-center rounded-full bg-surface-2 text-ink-muted hover:text-ink"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
+        {/* Grab area: the handle and title row. touch-none so the drag isn't
+            taken for a scroll of the sheet's content. */}
+        <div {...dragHandlers} className="-mx-5 -mt-5 touch-none px-5 pt-5 md:touch-auto">
+          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line md:hidden" aria-hidden />
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg">{title}</h2>
+            <button
+              onClick={requestClose}
+              className="tap flex size-10 items-center justify-center rounded-full bg-surface-2 text-ink-muted hover:text-ink"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
         {children}
       </div>

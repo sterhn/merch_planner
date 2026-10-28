@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
+import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, Repeat, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub, localISODate, todayISO } from '../lib/format'
+import { useReveal } from '../hooks/useReveal'
+import RevealMore from '../components/RevealMore'
 import { agoLabel, daysBetween } from '../lib/greeting'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from '../hooks/useConfirm'
@@ -25,6 +27,7 @@ import { showToast } from '../lib/toast'
 import { openPrintWindow, orderListPageHtml } from '../lib/printOrder'
 import { chunk, fetchAllPages } from '../lib/paging'
 import { failureMessage } from '../lib/errorMessage'
+import { findCustomer, knownCustomers } from '../lib/customers'
 import {
   fandomGrouping,
   flushViewState,
@@ -39,6 +42,9 @@ type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
 /** Unpaid this long, an order row flags its age. */
 const UNPAID_NUDGE_DAYS = 7
 
+/** Sent this long ago, an order is offered for "mark delivered" in bulk. */
+const DELIVERED_AFTER_DAYS = 14
+
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'to_send', label: 'To send' },
   { key: 'sent', label: 'Sent' },
@@ -46,6 +52,38 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
+
+const SORTS = [
+  { key: 'newest', label: 'Newest first' },
+  { key: 'oldest', label: 'Oldest first' },
+  { key: 'total', label: 'Biggest first' },
+] as const
+
+type Sort = (typeof SORTS)[number]['key']
+
+function sortOrders<T extends Order>(rows: T[], sort: Sort): T[] {
+  // The list arrives newest first (see useList below).
+  if (sort === 'oldest') return [...rows].reverse()
+  if (sort === 'total') return [...rows].sort((a, b) => (b.total_price ?? 0) - (a.total_price ?? 0))
+  return rows
+}
+
+/**
+ * The database stamps paid_at / sent_at when those flags go on; the optimistic
+ * copy in the cache stamps them too, so an order sent a moment ago doesn't
+ * look like one sent before the stamps existed (e.g. to "mark delivered").
+ */
+function withStamps(values: Partial<Order>): Partial<Order> {
+  const now = new Date().toISOString()
+  return {
+    ...values,
+    ...(values.paid === true ? { paid_at: now } : {}),
+    ...(values.sent === true ? { sent_at: now } : {}),
+  }
+}
+
+/** Rough height of an order row, to reveal enough rows to restore a scroll offset into. */
+const ROW_ESTIMATE_PX = 80
 
 function matchesStatus(o: Order, filter: Filter): boolean {
   switch (filter) {
@@ -80,8 +118,9 @@ export default function Orders() {
   // fall back to a refetch if the save fails. Without this the swipe felt
   // laggy next to the same toggle on the order screen.
   function setStatus(id: string, values: Partial<Order>) {
+    const patch = withStamps(values)
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
-      Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...values } : o)) : data,
+      Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...patch } : o)) : data,
     )
     update.mutate(
       { id, values },
@@ -92,9 +131,12 @@ export default function Orders() {
   // Packing day: print the "To send" list, pack everything, then mark the lot
   // sent in one go instead of a swipe per order.
   const bulkUpdate = useMutation({
+    // Ids travel in the URL, so a long list goes in batches.
     mutationFn: async ({ ids, values }: { ids: string[]; values: Partial<Order> }) => {
-      const { error } = await supabase.from('orders').update(values).in('id', ids)
-      if (error) throw error
+      for (const batch of chunk(ids, 80)) {
+        const { error } = await supabase.from('orders').update(values).in('id', batch)
+        if (error) throw error
+      }
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] })
@@ -104,24 +146,27 @@ export default function Orders() {
 
   function setStatusMany(ids: string[], values: Partial<Order>) {
     const set = new Set(ids)
+    const patch = withStamps(values)
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
-      Array.isArray(data) ? data.map((o) => (set.has(o.id) ? { ...o, ...values } : o)) : data,
+      Array.isArray(data) ? data.map((o) => (set.has(o.id) ? { ...o, ...patch } : o)) : data,
     )
     bulkUpdate.mutate({ ids, values })
   }
 
-  function markAllSent(ids: string[]) {
+  function markAll(ids: string[], flag: 'sent' | 'delivered') {
     confirm(
-      `Mark all ${ids.length} as sent? Their items come off catalog stock.`,
+      flag === 'sent'
+        ? `Mark all ${ids.length} as sent? Their items come off catalog stock.`
+        : `Mark all ${ids.length} as delivered?`,
       () => {
         celebrate()
-        setStatusMany(ids, { sent: true })
-        showToast(`${ids.length} order${ids.length !== 1 ? 's' : ''} marked sent`, {
+        setStatusMany(ids, { [flag]: true })
+        showToast(`${ids.length} order${ids.length !== 1 ? 's' : ''} marked ${flag}`, {
           label: 'Undo',
-          onClick: () => setStatusMany(ids, { sent: false }),
+          onClick: () => setStatusMany(ids, { [flag]: false }),
         })
       },
-      { label: 'Mark sent', tone: 'primary' },
+      { label: flag === 'sent' ? 'Mark sent' : 'Mark delivered', tone: 'primary' },
     )
   }
 
@@ -150,6 +195,12 @@ export default function Orders() {
     setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
   }
   const [deliveryFilter, setDeliveryFilter] = useState(() => ordersView().delivery)
+  const [sort, setSort] = useState<Sort>(() => {
+    const saved = ordersView().sort
+    return SORTS.some((s) => s.key === saved) ? (saved as Sort) : 'newest'
+  })
+  // Typing stays snappy on a long list: the filter catches up a frame later.
+  const deferredSearch = useDeferredValue(search)
   const launchNew = useLaunchFlag()
   const [adding, setAdding] = useState(launchNew)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
@@ -195,7 +246,7 @@ export default function Orders() {
   // Search and delivery narrow the pool; the status chips then split it, each
   // chip showing how many it would leave.
   const pool = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = deferredSearch.trim().toLowerCase()
     return (orders ?? []).filter((o) => {
       if (q) {
         const contact = `${o.telegram ?? ''} ${o.customer_email ?? ''}`.toLowerCase()
@@ -208,7 +259,7 @@ export default function Orders() {
       if (deliveryFilter && o.delivery_method !== deliveryFilter) return false
       return true
     })
-  }, [orders, search, deliveryFilter])
+  }, [orders, deferredSearch, deliveryFilter])
 
   const counts = useMemo(() => {
     const c = {} as Record<Filter, number>
@@ -216,7 +267,21 @@ export default function Orders() {
     return c
   }, [pool])
 
-  const filtered = useMemo(() => pool.filter((o) => matchesStatus(o, filter)), [pool, filter])
+  const filtered = useMemo(() => sortOrders(pool.filter((o) => matchesStatus(o, filter)), sort), [pool, filter, sort])
+
+  // Sent long enough ago to have arrived. Orders sent before migration 010
+  // have no sent_at; they're old by definition.
+  const longSent = useMemo(
+    () =>
+      filter === 'sent'
+        ? filtered.filter((o) => !o.sent_at || daysBetween(localISODate(o.sent_at), today) >= DELIVERED_AFTER_DAYS)
+        : [],
+    [filter, filtered, today],
+  )
+
+  // Enough rows up front to scroll back to where the list was left.
+  const [initialRows] = useState(() => Math.max(40, Math.ceil(ordersView().scrollY / ROW_ESTIMATE_PX) + 20))
+  const reveal = useReveal(filtered.length, `${filter}|${deferredSearch}|${deliveryFilter}|${sort}`, initialRows)
 
   // Resolved against the loaded list, so a deleted order stops offering a jump
   // back and the card always shows the order's current contact.
@@ -286,10 +351,14 @@ export default function Orders() {
     }
   }
 
+  // Past Telegram handles, most recent first, for the new-order suggestions.
+  const customers = useMemo(() => knownCustomers(orders ?? []), [orders])
+  const returning = useMemo(() => findCustomer(customers, form.telegram), [customers, form.telegram])
+
   function save(e: React.FormEvent) {
     e.preventDefault()
     insert.mutate(
-      { telegram: form.telegram || null, customer_email: form.customer_email || null },
+      { telegram: form.telegram.trim() || null, customer_email: form.customer_email.trim() || null },
       {
         onSuccess: (created) => {
           setAdding(false)
@@ -310,7 +379,7 @@ export default function Orders() {
           disabled={printLoading || filtered.length === 0}
           className={printLoading ? '[&_svg]:animate-spin' : ''}
         />
-        <AddButton onClick={() => setAdding(true)}>New order</AddButton>
+        <AddButton onClick={() => setAdding(true)} data-shortcut="new" title="Shortcut: N">New order</AddButton>
       </PageHeader>
 
       {resumeOrder && (
@@ -355,10 +424,10 @@ export default function Orders() {
         ))}
       </div>
 
-      {deliveryTypes.length > 0 && (
-        <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2">
+        {deliveryTypes.length > 0 && (
           <select
-            className={`${inputClass} max-w-48 text-xs`}
+            className={`${inputClass} h-11 min-w-0 flex-1 text-sm`}
             aria-label="Filter by delivery type"
             value={deliveryFilter}
             onChange={(e) => {
@@ -373,19 +442,34 @@ export default function Orders() {
               </option>
             ))}
           </select>
-          {deliveryFilter && (
-            <button
-              onClick={() => {
-                setDeliveryFilter('')
-                saveOrdersView({ delivery: '' })
-              }}
-              className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        <select
+          className={`${inputClass} h-11 min-w-0 flex-1 text-sm`}
+          aria-label="Sort orders"
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value as Sort)
+            saveOrdersView({ sort: e.target.value })
+          }}
+        >
+          {SORTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        {deliveryFilter && (
+          <button
+            onClick={() => {
+              setDeliveryFilter('')
+              saveOrdersView({ delivery: '' })
+            }}
+            className="tap glass min-h-11 shrink-0 rounded-full px-3.5 text-xs font-bold text-ink-muted hover:text-ink"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       {filter === 'to_send' && filtered.length > 0 && (
         <div className="mb-3 grid grid-cols-2 gap-2">
@@ -399,13 +483,26 @@ export default function Orders() {
           </Link>
           <SecondaryButton
             tone="good"
-            onClick={() => markAllSent(filtered.map((o) => o.id))}
+            onClick={() => markAll(filtered.map((o) => o.id), 'sent')}
             disabled={bulkUpdate.isPending}
           >
             <Send size={15} />
             Mark all {filtered.length} sent
           </SecondaryButton>
         </div>
+      )}
+
+      {/* Parcels sent a while ago have almost always arrived: clear them out
+          in one go instead of opening each. */}
+      {filter === 'sent' && longSent.length > 0 && (
+        <SecondaryButton
+          className="mb-3 w-full"
+          onClick={() => markAll(longSent.map((o) => o.id), 'delivered')}
+          disabled={bulkUpdate.isPending}
+        >
+          <PackageCheck size={15} />
+          Mark {longSent.length} sent over {DELIVERED_AFTER_DAYS} days ago delivered
+        </SecondaryButton>
       )}
 
       <QueryState
@@ -422,7 +519,7 @@ export default function Orders() {
       />
 
       <div className="space-y-2">
-        {filtered.map((o) => {
+        {filtered.slice(0, reveal.limit).map((o) => {
           const photos = [...new Set(
             (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
           )].slice(0, 6)
@@ -471,16 +568,22 @@ export default function Orders() {
                   to={`/orders/${o.id}`}
                   className="tap flex min-w-0 flex-1 items-center justify-between gap-3 p-3.5"
                 >
-                  {photos.length > 0 && (
-                    <div className="flex shrink-0 flex-col gap-0.5">
-                      {photos.slice(0, 3).map((url, i) => (
-                        <img key={i} src={url} alt="" className="size-7 rounded-lg object-cover" loading="lazy" />
+                  {/* One photo fills the slot; more tile a 2×2 square, so a big
+                      order no longer makes its row three thumbnails tall. */}
+                  {photos.length === 1 ? (
+                    <img src={photos[0]} alt="" className="size-12 shrink-0 rounded-xl object-cover" loading="lazy" />
+                  ) : photos.length > 1 ? (
+                    <div className="grid size-12 shrink-0 grid-cols-2 gap-0.5">
+                      {photos.slice(0, photos.length > 4 ? 3 : 4).map((url, i) => (
+                        <img key={i} src={url} alt="" className="size-full rounded-md object-cover" loading="lazy" />
                       ))}
-                      {photos.length > 3 && (
-                        <span className="text-center text-xs text-ink-faint">+{photos.length - 3}</span>
+                      {photos.length > 4 && (
+                        <span className="grid place-items-center rounded-md bg-surface-2 text-3xs font-bold text-ink-muted">
+                          +{photos.length - 3}
+                        </span>
                       )}
                     </div>
-                  )}
+                  ) : null}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{who}</p>
                     <p className="truncate text-xs text-ink-muted">
@@ -491,7 +594,10 @@ export default function Orders() {
                       <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
                     </div>
                   </div>
-                  <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
+                  <span className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="font-display text-sm">{formatRub(o.total_price)}</span>
+                    <span className="text-2xs font-semibold text-ink-faint">{formatDate(o.created_at)}</span>
+                  </span>
                 </Link>
                 {/* SwipeableRow ignores mouse pointers, so without these the only way
                     to delete or advance an order on a laptop would be to open it. */}
@@ -518,14 +624,44 @@ export default function Orders() {
           )
         })}
       </div>
+      {reveal.hasMore && <RevealMore onReveal={reveal.more} remaining={filtered.length - reveal.limit} />}
 
       <Modal title="New order" open={adding} onClose={() => setAdding(false)}>
         <form onSubmit={save}>
           <Field label="Telegram">
-            <input className={inputClass} value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@username" />
+            <input
+              className={inputClass}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              list="known-customers"
+              value={form.telegram}
+              onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+              placeholder="@username"
+            />
           </Field>
+          <datalist id="known-customers">
+            {customers.map((c) => (
+              <option key={c.handle} value={c.handle} />
+            ))}
+          </datalist>
+          {returning && (
+            <p className="-mt-1 mb-3 flex items-center gap-1.5 rounded-control bg-brand/10 px-3 py-2 text-xs font-semibold text-brand">
+              <Repeat size={13} strokeWidth={2.6} />
+              Returning customer · {returning.count} order{returning.count !== 1 ? 's' : ''}, last {formatDate(returning.last)}
+            </p>
+          )}
           <Field label="Email">
-            <input className={inputClass} type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
+            <input
+              className={inputClass}
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={form.customer_email}
+              onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
+            />
           </Field>
           <p className="mb-3 text-xs text-ink-muted">You can add items and details on the next screen.</p>
           <PrimaryButton type="submit" disabled={insert.isPending}>

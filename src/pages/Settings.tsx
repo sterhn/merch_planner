@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, DownloadCloud, Loader2, LogOut, PackageMinus } from 'lucide-react'
+import { Database, DownloadCloud, Loader2, LogOut, Monitor, Moon, PackageMinus, Sun } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSignOut } from '../hooks/useAuth'
 import { SCHEMA_VERSION, useSaveSetting, useSchemaVersion, useSettings } from '../hooks/useSettings'
@@ -11,6 +11,7 @@ import { fetchAllPages } from '../lib/paging'
 import { showToast } from '../lib/toast'
 import { failureMessage } from '../lib/errorMessage'
 import { haptic } from '../lib/haptics'
+import { readTheme, saveTheme, THEME_PREFS, type ThemePref } from '../lib/theme'
 import Card from '../components/Card'
 import PageHeader from '../components/PageHeader'
 import { SETTINGS } from '../components/sections'
@@ -26,6 +27,8 @@ function fetchAll(table: string): Promise<Record<string, unknown>[]> {
   })
 }
 
+const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const
+
 export default function Settings() {
   const signOut = useSignOut()
   const { settings, isLoading } = useSettings()
@@ -36,6 +39,7 @@ export default function Settings() {
   // Draft of the threshold field; null while it mirrors the saved value.
   const [thresholdDraft, setThresholdDraft] = useState<string | null>(null)
   const threshold = thresholdDraft ?? String(settings.lowStockThreshold)
+  const [theme, setTheme] = useState<ThemePref>(readTheme)
 
   async function downloadBackup() {
     haptic()
@@ -112,6 +116,35 @@ export default function Settings() {
               {busy ? 'Preparing backup…' : 'Download backup'}
             </span>
           </PrimaryButton>
+        </Card>
+
+        <Card title="Appearance">
+          <div className="grid grid-cols-3 gap-1 rounded-full bg-surface-2 p-1" role="radiogroup" aria-label="Theme">
+            {THEME_PREFS.map((t) => {
+              const Icon = THEME_ICON[t.key]
+              const on = theme === t.key
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => {
+                    haptic(5)
+                    setTheme(t.key)
+                    saveTheme(t.key)
+                  }}
+                  className={`tap flex min-h-11 items-center justify-center gap-1.5 rounded-full text-sm font-bold transition-colors ${
+                    on ? 'bg-brand text-on-brand shadow-card' : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  <Icon size={15} />
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">On this device only. System follows your phone or computer.</p>
         </Card>
 
         <Card title="Catalog">

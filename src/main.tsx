@@ -7,7 +7,10 @@ import './index.css'
 import App from './App'
 import Backdrop from './components/Backdrop'
 import { showToast } from './lib/toast'
+import { applyTheme, readTheme } from './lib/theme'
 
+// Before the first render, so a pinned theme never flashes the other one.
+applyTheme(readTheme())
 registerSW()
 
 const queryClient = new QueryClient({

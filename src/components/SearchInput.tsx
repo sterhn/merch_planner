@@ -11,20 +11,25 @@ export default function SearchInput({
   placeholder = 'Search…',
   label = 'Search',
   className = '',
+  autoFocus,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   label?: string
   className?: string
+  autoFocus?: boolean
 }) {
   return (
     <div className={`relative ${className}`}>
       <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
       <input
         type="search"
+        enterKeyHint="search"
+        aria-keyshortcuts="/"
         aria-label={label}
         placeholder={placeholder}
+        autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} pl-11`}

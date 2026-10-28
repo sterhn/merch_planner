@@ -12,6 +12,8 @@ export interface OrdersView {
   filter: string
   search: string
   delivery: string
+  /** An OrderSort key. */
+  sort: string
   scrollY: number
 }
 
@@ -53,7 +55,7 @@ interface ViewState {
 }
 
 const DEFAULTS: ViewState = {
-  orders: { filter: 'to_send', search: '', delivery: '', scrollY: 0 },
+  orders: { filter: 'to_send', search: '', delivery: '', sort: 'newest', scrollY: 0 },
   lastOrder: null,
   groupByFandom: false,
   catalog: { search: '', type: null, fandom: null, archived: false, layout: 'list', sort: 'type' },

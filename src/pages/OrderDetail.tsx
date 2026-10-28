@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Send, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
-import { useDelete, useList, useUpdate } from '../hooks/useTable'
+import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
@@ -22,13 +22,34 @@ import { AddButton, DangerButton, IconButton } from '../components/FormField'
 import OrderDetailsForm from './order/OrderDetailsForm'
 import { AddLineSheet, EditLineSheet, ImportSheet } from './order/LineSheets'
 import MessagesSheet from './order/MessagesSheet'
+import { telegramLink } from '../lib/customerMessages'
+
+/** The order as some cached orders list already holds it, if any. */
+function cachedListRow(qc: QueryClient, id: string | undefined): { row: Order; updatedAt: number } | undefined {
+  if (!id) return undefined
+  for (const query of qc.getQueryCache().findAll({ queryKey: ['orders'] })) {
+    const data = query.state.data
+    if (!Array.isArray(data)) continue
+    const row = (data as Order[]).find((o) => o.id === id)
+    if (row) return { row, updatedAt: query.state.dataUpdatedAt }
+  }
+  return undefined
+}
+
+const ACTION_CHIP =
+  'tap glass flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold text-ink disabled:opacity-50'
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
 
-  const { data: order, isError: orderMissing } = useQuery({
+  const {
+    data: order,
+    isError: orderMissing,
+    isStale: orderStale,
+    isFetchedAfterMount: orderFetched,
+  } = useQuery({
     queryKey: ['orders', id],
     queryFn: async (): Promise<Order> => {
       const { data, error } = await supabase.from('orders').select('*').eq('id', id!).single()
@@ -36,6 +57,10 @@ export default function OrderDetail() {
       return data as Order
     },
     enabled: Boolean(id),
+    // Opened from a list, the row is already in the cache — show it at once
+    // instead of a loading screen, and refresh in the background as usual.
+    initialData: () => cachedListRow(qc, id)?.row,
+    initialDataUpdatedAt: () => cachedListRow(qc, id)?.updatedAt,
   })
 
   const {
@@ -88,6 +113,7 @@ export default function OrderDetail() {
   // and the database recomputes the total — so line writes refresh orders too.
   // 'items' as well: a line change on a sent order moves stock (migration 010).
   const deleteLine = useDelete('order_items', ['orders', 'items'])
+  const restoreLineMutation = useInsert<OrderItem>('order_items', ['orders', 'items'])
   const { confirm, element: confirmSheet } = useConfirm()
 
   const [addingLine, setAddingLine] = useState(false)
@@ -149,6 +175,9 @@ export default function OrderDetail() {
 
   if (!order) return <EmptyState icon={Loader2} spin message="Loading…" />
 
+  const contact = order.telegram || order.customer_email || ''
+  const chat = telegramLink(order.telegram)
+
   // Before migration 010 every total was typed by hand.
   const manualTotal = order.total_manual ?? true
   const calculated = calculatedTotal(itemsTotal, order.shipping_fee, order.discount)
@@ -188,6 +217,34 @@ export default function OrderDetail() {
     openPrintWindow(singleOrderPageHtml(order!, orderedLines, itemNames, grouped ? fandomGroups : null))
   }
 
+  // No confirm step: the line comes off at once and the toast offers it back.
+  function removeLine(l: OrderItem, name: string) {
+    haptic()
+    qc.setQueryData<OrderItem[]>(['order_items', id], (rows) => rows?.filter((r) => r.id !== l.id))
+    deleteLine.mutate(l.id, {
+      onSuccess: () =>
+        showToast(`Removed ${name}`, {
+          label: 'Undo',
+          onClick: () => restoreLine(l),
+        }),
+      onError: () => void qc.invalidateQueries({ queryKey: ['order_items', id] }),
+    })
+  }
+
+  // Puts a removed line back as it was (a new row; the database re-applies the
+  // total and, on a sent order, the stock).
+  function restoreLine(l: OrderItem) {
+    restoreLineMutation.mutate({
+      order_id: l.order_id,
+      item_id: l.item_id,
+      name_text: l.name_text,
+      category: l.category,
+      qty: l.qty,
+      unit_price: l.unit_price,
+      position: l.position,
+    })
+  }
+
   function printReceipt() {
     openPrintWindow(receiptPageHtml(order!, orderedLines, itemNames))
   }
@@ -225,7 +282,7 @@ export default function OrderDetail() {
           tone="danger"
           label={`Remove ${catalogItem?.name ?? l.name_text ?? 'item'}`}
           className="print:hidden"
-          onClick={() => confirm('Remove this item?', () => deleteLine.mutate(l.id))}
+          onClick={() => removeLine(l, catalogItem?.name ?? l.name_text ?? 'item')}
         />
       </li>
     )
@@ -235,33 +292,49 @@ export default function OrderDetail() {
     <div>
       <button
         onClick={() => navigate('/orders')}
-        className="tap -ml-2 mb-3 flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-bold text-brand print:hidden"
+        className="tap glass mb-3 flex min-h-11 w-fit items-center gap-1.5 rounded-full px-3.5 text-sm font-bold text-brand print:hidden"
       >
         <ArrowLeft size={16} />
         Back to orders
       </button>
 
-      <PageHeader title={order.telegram || order.customer_email || 'Order'}>
-        <IconButton
-          icon={MessageSquareText}
-          label="Message to customer"
+      {/* The actions get their own labelled row: four icons beside the title
+          left a phone with "buyer0…" for the customer's name. */}
+      <PageHeader title={contact || 'Order'} subtitle={`Order from ${formatDate(order.created_at)}`}>
+        <span className="font-display text-xl">{formatRub(order.total_price)}</span>
+      </PageHeader>
+
+      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 print:hidden" role="toolbar" aria-label="Order actions">
+        {chat && (
+          <a href={chat} target="_blank" rel="noreferrer" onClick={() => haptic()} className={ACTION_CHIP}>
+            <Send size={16} className="text-brand" />
+            Chat
+          </a>
+        )}
+        <button
+          type="button"
+          className={ACTION_CHIP}
           onClick={() => {
             haptic()
             setMessaging(true)
           }}
-          className="print:hidden"
-        />
-        <IconButton
-          icon={exporting ? Loader2 : ImageDown}
-          label="Share as image"
-          onClick={exportImage}
-          disabled={exporting}
-          className={`print:hidden ${exporting ? '[&_svg]:animate-spin' : ''}`}
-        />
-        <IconButton icon={Printer} label="Print / PDF" onClick={printOrder} className="print:hidden" />
-        <IconButton icon={Receipt} label="Receipt" onClick={printReceipt} className="print:hidden" />
-        <span className="font-display text-lg">{formatRub(order.total_price)}</span>
-      </PageHeader>
+        >
+          <MessageSquareText size={16} className="text-brand" />
+          Message
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={exportImage} disabled={exporting}>
+          {exporting ? <Loader2 size={16} className="animate-spin text-brand" /> : <ImageDown size={16} className="text-brand" />}
+          Image
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={printOrder}>
+          <Printer size={16} className="text-brand" />
+          Print
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={printReceipt}>
+          <Receipt size={16} className="text-brand" />
+          Receipt
+        </button>
+      </div>
 
       <div className="mb-5 flex gap-2 *:flex-1 print:hidden">
         <StatusBadge on={order.paid} label="paid" onClick={() => toggle('paid')} />
@@ -393,13 +466,22 @@ export default function OrderDetail() {
         {/* Re-keyed when the total switches between automatic and by-hand,
             so the form picks up the new mode. Not on total_price: that
             changes with every line edit and would wipe unsaved details. */}
-        <OrderDetailsForm
-          key={`${order.id}-${manualTotal}`}
-          order={order}
-          itemsTotal={itemsTotal}
-          pending={updateOrder.isPending}
-          onSave={(values) => updateOrder.mutate({ id: id!, values })}
-        />
+        {/* The form copies the order once, when it mounts. If the header is
+            showing a stale row from a list, wait for the fresh one — saving a
+            form started from old details would write them back over newer ones. */}
+        {orderStale && !orderFetched ? (
+          <div className="rounded-card glass p-4 text-sm text-ink-muted" role="status">
+            Loading the latest details…
+          </div>
+        ) : (
+          <OrderDetailsForm
+            key={`${order.id}-${manualTotal}`}
+            order={order}
+            itemsTotal={itemsTotal}
+            pending={updateOrder.isPending}
+            onSave={(values) => updateOrder.mutateAsync({ id: id!, values })}
+          />
+        )}
 
         {/* A glass pill behind it: red text straight on the foil is ~2.7:1. */}
         <div className="mt-4 rounded-full glass">
@@ -423,6 +505,7 @@ export default function OrderDetail() {
         itemNames={itemNames}
         stockFor={(item) => effectiveStock(item, bundleGroups, itemNames)}
         nextPosition={nextPosition}
+        lines={lines ?? []}
       />
 
       {editingLine && (

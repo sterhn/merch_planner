@@ -22,7 +22,10 @@ export default function Toast() {
           }`}
         >
           <Sparkles size={16} className="shrink-0 text-sun" aria-hidden />
-          {m.text}
+          {/* Tap the message to dismiss it early. */}
+          <button type="button" onClick={() => dismissToast(m.id)} className="min-w-0 text-left">
+            {m.text}
+          </button>
           {m.action && (
             <button
               type="button"
