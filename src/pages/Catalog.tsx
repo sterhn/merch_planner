@@ -128,6 +128,20 @@ export default function Catalog() {
     return Array.from(s).sort()
   }, [items])
 
+  // What's on the shelves: live items, bundles left out (their stock is their parts').
+  const totals = useMemo(() => {
+    let pieces = 0
+    let value = 0
+    for (const i of items ?? []) {
+      if (i.archived) continue
+      if (bundleGroups.has(i.id)) continue
+      const stock = Math.max(0, i.stock_qty ?? 0)
+      pieces += stock
+      value += stock * (i.cost_price ?? 0)
+    }
+    return { pieces, value }
+  }, [items, bundleGroups])
+
   const archivedCount = useMemo(() => (items ?? []).filter((i) => i.archived).length, [items])
   // Leaving the archive view once it's empty (the last item was restored).
   const showArchived = view.archived && archivedCount > 0
@@ -163,7 +177,16 @@ export default function Catalog() {
 
   return (
     <div>
-      <PageHeader title="Catalog" icon={SECTIONS.catalog.icon} tone={SECTIONS.catalog.tone}>
+      <PageHeader
+        title="Catalog"
+        subtitle={
+          totals.pieces > 0
+            ? `${totals.pieces} pcs · ${formatRub(Math.round(totals.value))} at cost`
+            : undefined
+        }
+        icon={SECTIONS.catalog.icon}
+        tone={SECTIONS.catalog.tone}
+      >
         <AddButton onClick={() => openEditor('new')} data-shortcut="new" title="Shortcut: N">Add item</AddButton>
       </PageHeader>
       <SearchInput className="mb-3" label="Search catalog" value={view.search} onChange={(search) => updateView({ search })} />

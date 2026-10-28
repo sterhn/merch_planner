@@ -25,6 +25,7 @@ import type { Collect, ExpenseFeedRow, Item, Order, ShelfItem } from '../lib/typ
 import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
 import { backupDue } from '../lib/settings'
+import { saveCatalogView } from '../lib/viewState'
 import EmptyState from '../components/EmptyState'
 import { SkeletonDashboard } from '../components/Skeleton'
 import {
@@ -80,6 +81,29 @@ const QUICK_ACTIONS = [
 
 /** Unpaid this long, an order gets flagged as worth a nudge. */
 const UNPAID_NUDGE_DAYS = 7
+
+/**
+ * "▲ 12% vs Sep" — this period against the month before. `upIsGood` sets the
+ * colour: more revenue is good, more expenses isn't. Nothing to compare
+ * against a month with none.
+ */
+function changeVs(
+  current: number,
+  previous: { month: string; toDate: boolean },
+  previousValue: number,
+  upIsGood: boolean,
+) {
+  if (previousValue <= 0) return undefined
+  const { month } = previous
+  const pct = Math.round(((current - previousValue) / previousValue) * 100)
+  const short = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleDateString('en-US', {
+    month: 'short',
+  })
+  // Mid-month the comparison is with the same days of last month.
+  const title = previous.toDate ? `Compared with the same days of ${short}` : `Compared with all of ${short}`
+  if (pct === 0) return { text: `same as ${short}`, good: true, title }
+  return { text: `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs ${short}`, good: pct > 0 === upIsGood, title }
+}
 
 /** Settings (and sign-out) live in the sidebar on desktop; mobile reaches them here. */
 function SettingsLink() {
@@ -208,28 +232,50 @@ export default function Dashboard() {
   }, [orders, expenses, shelf])
 
   const stats = useMemo(() => {
-    const inPeriod = (m: string | null) => period === 'all' || m === period
-    // Counted in the month the money came in. Orders paid before migration 010
-    // have no paid_at, so they fall back to the month they were created.
-    const orderRevenue = (orders ?? [])
-      .filter((o) => o.paid && inPeriod(localMonth(paidMonthSource(o))))
-      .reduce((s, o) => s + (o.total_price ?? 0), 0)
-    // The shelf page is archived, but its historical income still counts —
-    // folded into Revenue so past months (and the all-time net) stay truthful.
-    const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
-    const totalExpenses = (expenses ?? []).filter((e) => inPeriod(monthKey(e.date))).reduce((s, e) => s + e.amount, 0)
-    const revenue = orderRevenue + shelfIncome
-    const unpaid = (orders ?? []).filter((o) => !o.paid)
+    // Revenue and expenses for one period ('all' or a YYYY-MM month).
+    // `upToDay` cuts a month off at that day of the month (1–31).
+    const totalsFor = (p: string, upToDay = 31) => {
+      const inPeriod = (m: string | null) => p === 'all' || m === p
+      const byDay = (isoDate: string) => Number(isoDate.slice(8, 10)) <= upToDay
+      // Counted in the month the money came in. Orders paid before migration 010
+      // have no paid_at, so they fall back to the month they were created.
+      const orderRevenue = (orders ?? [])
+        .filter((o) => {
+          if (!o.paid) return false
+          const day = localISODate(paidMonthSource(o))
+          return inPeriod(day.slice(0, 7)) && byDay(day)
+        })
+        .reduce((s, o) => s + (o.total_price ?? 0), 0)
+      // The shelf page is archived, but its historical income still counts —
+      // folded into Revenue so past months (and the all-time net) stay truthful.
+      const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
+      const totalExpenses = (expenses ?? [])
+        .filter((e) => inPeriod(monthKey(e.date)) && byDay(e.date))
+        .reduce((s, e) => s + e.amount, 0)
+      return { revenue: orderRevenue + shelfIncome, totalExpenses }
+    }
+    const { revenue, totalExpenses } = totalsFor(period)
+    // The month before, for the "vs last month" lines — only when it has data.
+    const prevPeriod = period === 'all' ? null : periods[periods.indexOf(period) - 1]
+    // A month still under way is compared with the same days of the one before,
+    // not all of it — otherwise every month looks down until its last week.
     const today = todayISO()
+    const sameDays = period === today.slice(0, 7) ? Number(today.slice(8, 10)) : 31
+    const previous =
+      prevPeriod && prevPeriod !== 'all'
+        ? { month: prevPeriod, toDate: sameDays < 31, ...totalsFor(prevPeriod, sameDays) }
+        : null
+    const unpaid = (orders ?? []).filter((o) => !o.paid)
     return {
       revenue,
       totalExpenses,
       net: revenue - totalExpenses,
+      previous,
       unpaid: unpaid.length,
       unpaidStale: unpaid.filter((o) => daysBetween(localISODate(o.created_at), today) >= UNPAID_NUDGE_DAYS).length,
       toSend: (orders ?? []).filter((o) => o.paid && !o.sent).length,
     }
-  }, [orders, shelf, expenses, period])
+  }, [orders, shelf, expenses, period, periods])
 
   // Two dates per collect: pay by (deadline) and arrives by. Overdue payments
   // and late arrivals stay listed — those are the ones that need you most.
@@ -265,7 +311,6 @@ export default function Dashboard() {
     return (items ?? [])
       .filter((i) => !i.archived && !bundleIds.has(i.id) && i.stock_qty !== null && i.stock_qty <= threshold)
       .sort((a, b) => (a.stock_qty ?? 0) - (b.stock_qty ?? 0))
-      .slice(0, 4)
   }, [items, rawBundles, threshold])
 
   const showBackupNudge = !settingsLoading && backupDue(settings.lastBackupAt, now)
@@ -380,8 +425,28 @@ export default function Dashboard() {
       <div className="mb-3 flex flex-col gap-2">
         <HeroCard value={stats.net} revenue={stats.revenue} />
         <div className="grid grid-cols-2 gap-2">
-          <StatTile label="Revenue" value={stats.revenue} tone="good" icon={TrendingUp} format={formatRub} index={0} />
-          <StatTile label="Expenses" value={stats.totalExpenses} tone="bad" icon={TrendingDown} format={formatRub} index={1} />
+          <StatTile
+            label="Revenue"
+            value={stats.revenue}
+            tone="good"
+            icon={TrendingUp}
+            format={formatRub}
+            index={0}
+            change={stats.previous ? changeVs(stats.revenue, stats.previous, stats.previous.revenue, true) : undefined}
+          />
+          <StatTile
+            label="Expenses"
+            value={stats.totalExpenses}
+            tone="bad"
+            icon={TrendingDown}
+            format={formatRub}
+            index={1}
+            change={
+              stats.previous
+                ? changeVs(stats.totalExpenses, stats.previous, stats.previous.totalExpenses, false)
+                : undefined
+            }
+          />
         </div>
       </div>
 
@@ -431,15 +496,23 @@ export default function Dashboard() {
               </span>
             }
             action={
-              <Link to="/catalog" className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand">
-                Catalog
+              // Opens the live catalog sorted low-stock first, so the rest of
+              // the list continues where this card stops.
+              <Link
+                to="/catalog"
+                onClick={() =>
+                  saveCatalogView({ sort: 'stock', search: '', type: null, fandom: null, archived: false })
+                }
+                className="tap -my-3 -mr-2 flex min-h-11 items-center px-2 text-xs font-bold text-brand"
+              >
+                {lowStock.length > 4 ? `All ${lowStock.length}` : 'Catalog'}
               </Link>
             }
             className="animate-pop"
             style={{ animationDelay: '480ms' }}
           >
             <div className="space-y-1.5">
-              {lowStock.map((i) => (
+              {lowStock.slice(0, 4).map((i) => (
                 <div key={i.id} className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     {i.image_url ? (

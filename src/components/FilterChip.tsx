@@ -12,6 +12,7 @@ export default function FilterChip({ active, onClick, tone = 'brand', count, chi
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={() => {
         haptic(5)
         onClick()

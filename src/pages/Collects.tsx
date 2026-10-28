@@ -17,13 +17,27 @@ import { AddButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import CollectEditor from './collects/CollectEditor'
 
-type StatusFilter = 'all' | 'pending' | 'received'
+type StatusFilter = 'all' | 'unpaid' | 'pending' | 'received'
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'All' },
+  { key: 'unpaid', label: 'To pay' },
   { key: 'pending', label: 'Not received' },
   { key: 'received', label: 'Received' },
 ]
+
+function matchesStatus(c: Collect, filter: StatusFilter): boolean {
+  switch (filter) {
+    case 'unpaid':
+      return !c.paid
+    case 'pending':
+      return !c.received_at
+    case 'received':
+      return Boolean(c.received_at)
+    case 'all':
+      return true
+  }
+}
 
 /** A small date chip: red when the date has passed and still matters. */
 function DateChip({ icon: Icon, label, date, late }: { icon: typeof Wallet; label: string; date: string; late: boolean }) {
@@ -110,22 +124,41 @@ export default function Collects() {
   const today = todayISO()
 
   // Months of runs accumulate; search covers name, vendor and position names.
-  const filtered = useMemo(() => {
+  // Search narrows the pool; the status chips then split it, each showing how
+  // many it would leave (like the Orders list).
+  const pool = useMemo(() => {
     const q = search.trim().toLowerCase()
+    if (!q) return collects ?? []
     return (collects ?? []).filter((c) => {
-      if (statusFilter === 'pending' && c.received_at) return false
-      if (statusFilter === 'received' && !c.received_at) return false
-      if (!q) return true
       const positionNames = (positionsByCollect.get(c.id) ?? [])
         .map((p) => ((p.item_id ? itemById.get(p.item_id)?.name : null) ?? p.name_text ?? ''))
         .join(' ')
       return `${c.name ?? ''} ${c.vendor ?? ''} ${positionNames}`.toLowerCase().includes(q)
     })
-  }, [collects, search, statusFilter, positionsByCollect, itemById])
+  }, [collects, search, positionsByCollect, itemById])
+
+  const counts = useMemo(() => {
+    const out = {} as Record<StatusFilter, number>
+    for (const f of STATUS_FILTERS) out[f.key] = pool.filter((c) => matchesStatus(c, f.key)).length
+    return out
+  }, [pool])
+
+  const filtered = useMemo(() => pool.filter((c) => matchesStatus(c, statusFilter)), [pool, statusFilter])
+
+  // Still owed across every collect, whatever the filter.
+  const toPay = useMemo(() => {
+    const unpaid = (collects ?? []).filter((c) => !c.paid)
+    return { count: unpaid.length, total: unpaid.reduce((s, c) => s + (c.total_cost ?? 0), 0) }
+  }, [collects])
 
   return (
     <div>
-      <PageHeader title="Collects" icon={SECTIONS.collects.icon} tone={SECTIONS.collects.tone}>
+      <PageHeader
+        title="Collects"
+        subtitle={toPay.count > 0 ? `${formatRub(toPay.total)} still to pay on ${toPay.count}` : undefined}
+        icon={SECTIONS.collects.icon}
+        tone={SECTIONS.collects.tone}
+      >
         <AddButton onClick={() => setEditing('new')} data-shortcut="new" title="Shortcut: N">Add collect</AddButton>
       </PageHeader>
 
@@ -149,6 +182,7 @@ export default function Collects() {
               setStatusFilter(f.key)
               saveCollectsView({ status: f.key })
             }}
+            count={counts[f.key]}
           >
             {f.label}
           </FilterChip>

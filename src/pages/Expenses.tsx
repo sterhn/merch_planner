@@ -16,6 +16,7 @@ import { EXPENSE_CATEGORIES } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { currentMonth, formatDate, formatMonth, formatRub, monthKey, monthRange, parseMoney, todayISO } from '../lib/format'
 import Modal from '../components/Modal'
+import FilterChip from '../components/FilterChip'
 import { useConfirm } from '../hooks/useConfirm'
 import ExpenseChart, { type MonthTotal } from '../components/ExpenseChart'
 import PageHeader from '../components/PageHeader'
@@ -50,7 +51,18 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 const NEW_CATEGORIES = EXPENSE_CATEGORIES.filter((c) => c !== 'shelf_rent')
 
 export default function Expenses() {
-  const { data: feed, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
+  const { data: allRows, isLoading, isError, refetch } = useList<ExpenseFeedRow>('expense_feed', { orderBy: 'date', ascending: false })
+  // One category at a time (or all): the chart, month totals and rows follow it.
+  const [category, setCategory] = useState<string | null>(null)
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of allRows ?? []) counts.set(row.category, (counts.get(row.category) ?? 0) + 1)
+    return [...counts].sort((a, b) => b[1] - a[1])
+  }, [allRows])
+  const feed = useMemo(
+    () => (category ? (allRows ?? []).filter((r) => r.category === category) : allRows),
+    [allRows, category],
+  )
   const insert = useInsert<Expense>('expenses', ['expense_feed'])
   const update = useUpdate<Expense>('expenses', ['expense_feed'])
   const remove = useDelete('expenses', ['expense_feed'])
@@ -118,7 +130,7 @@ export default function Expenses() {
 
   // Month totals come from every row; only the rows themselves are revealed
   // a batch at a time.
-  const reveal = useReveal((feed ?? []).length, 'expenses')
+  const reveal = useReveal((feed ?? []).length, category ?? 'all')
   const visibleMonths = useMemo(() => {
     let budget = reveal.limit
     const out: [string, { rows: ExpenseFeedRow[]; total: number }][] = []
@@ -175,7 +187,7 @@ export default function Expenses() {
       <QueryState
         isLoading={isLoading}
         isError={isError}
-        isEmpty={(feed ?? []).length === 0}
+        isEmpty={(allRows ?? []).length === 0}
         icon={Receipt}
         tone={SECTIONS.expenses.tone}
         skeleton={<SkeletonRows rows={5} />}
@@ -183,6 +195,19 @@ export default function Expenses() {
         emptyMessage="No expenses yet."
         onRetry={() => void refetch()}
       />
+
+      {categories.length > 1 && (
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Category">
+          <FilterChip active={category === null} onClick={() => setCategory(null)}>
+            All
+          </FilterChip>
+          {categories.map(([c, n]) => (
+            <FilterChip key={c} active={category === c} count={n} onClick={() => setCategory(category === c ? null : c)}>
+              {CATEGORY_LABELS[c] ?? c}
+            </FilterChip>
+          ))}
+        </div>
+      )}
 
       {monthlyTotals.length > 0 && <ExpenseChart months={monthlyTotals} />}
 
