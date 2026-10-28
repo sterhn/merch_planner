@@ -23,6 +23,7 @@ export function AddLineSheet({
   itemNames,
   stockFor,
   nextPosition,
+  lines,
 }: {
   open: boolean
   onClose: () => void
@@ -32,12 +33,16 @@ export function AddLineSheet({
   itemNames: ReadonlyMap<string, Item>
   stockFor: (item: Item) => number
   nextPosition: number
+  /** The order's current lines: picking an item that's already on it adds to that line. */
+  lines: OrderItem[]
 }) {
   // Line writes refresh orders too (the list embeds lines for its thumbnails
   // and search, and the database recomputes the total) and items (a line on a
   // sent order moves stock).
   const insertLine = useInsert<OrderItem>('order_items', ['orders', 'items'])
+  const updateLine = useUpdate<OrderItem>('order_items', ['orders', 'items'])
   const [form, setForm] = useState(EMPTY_LINE)
+  const busy = insertLine.isPending || updateLine.isPending
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -45,23 +50,34 @@ export function AddLineSheet({
     // reopen-the-sheet round trip per line.
     const another = (e.nativeEvent as SubmitEvent).submitter?.dataset.next === '1'
     const picked = form.item_id ? itemNames.get(form.item_id) : undefined
+    const qty = parseCount(form.qty, 1) ?? 1
+    const unitPrice = parseMoney(form.unit_price) ?? picked?.sale_price ?? null
+    const done = (label: string) => {
+      setForm(EMPTY_LINE)
+      if (another) showToast(label)
+      else onClose()
+    }
+    // The same item at the same price is already on the order: one line ×3
+    // reads better than three lines ×1, on screen and on the printout.
+    const same = picked && lines.find((l) => l.item_id === picked.id && l.unit_price === unitPrice)
+    if (same) {
+      updateLine.mutate(
+        { id: same.id, values: { qty: same.qty + qty } },
+        { onSuccess: () => done(`${picked.name} ×${same.qty + qty}`) },
+      )
+      return
+    }
     insertLine.mutate(
       {
         order_id: orderId,
         item_id: form.item_id || null,
         name_text: form.name_text || picked?.name || null,
         category: picked?.type ?? null,
-        qty: parseCount(form.qty, 1) ?? 1,
-        unit_price: parseMoney(form.unit_price) ?? picked?.sale_price ?? null,
+        qty,
+        unit_price: unitPrice,
         position: nextPosition,
       },
-      {
-        onSuccess: () => {
-          setForm(EMPTY_LINE)
-          if (another) showToast(`Added ${picked?.name || form.name_text || 'item'}`)
-          else onClose()
-        },
-      },
+      { onSuccess: () => done(`Added ${picked?.name || form.name_text || 'item'}`) },
     )
   }
 
@@ -97,10 +113,10 @@ export function AddLineSheet({
           </Field>
         </div>
         <div className="flex gap-2">
-          <SecondaryButton type="submit" data-next="1" disabled={insertLine.isPending} className="h-12 shrink-0">
+          <SecondaryButton type="submit" data-next="1" disabled={busy} className="h-12 shrink-0">
             Add &amp; next
           </SecondaryButton>
-          <PrimaryButton type="submit" disabled={insertLine.isPending}>
+          <PrimaryButton type="submit" disabled={busy}>
             Add
           </PrimaryButton>
         </div>

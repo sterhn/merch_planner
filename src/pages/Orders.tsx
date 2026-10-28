@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
+import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, Repeat, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub, localISODate, todayISO } from '../lib/format'
@@ -316,10 +316,28 @@ export default function Orders() {
     }
   }
 
+  // Past Telegram handles, most recent first, for the new-order suggestions.
+  const customers = useMemo(() => {
+    const seen = new Map<string, { handle: string; count: number; last: string }>()
+    for (const o of orders ?? []) {
+      const handle = o.telegram?.trim()
+      if (!handle) continue
+      const key = handle.toLowerCase()
+      const known = seen.get(key)
+      if (known) known.count += 1
+      else seen.set(key, { handle, count: 1, last: o.created_at })
+    }
+    return [...seen.values()]
+  }, [orders])
+  const returning = useMemo(() => {
+    const typed = form.telegram.trim().toLowerCase()
+    return typed ? customers.find((c) => c.handle.toLowerCase() === typed) : undefined
+  }, [customers, form.telegram])
+
   function save(e: React.FormEvent) {
     e.preventDefault()
     insert.mutate(
-      { telegram: form.telegram || null, customer_email: form.customer_email || null },
+      { telegram: form.telegram.trim() || null, customer_email: form.customer_email.trim() || null },
       {
         onSuccess: (created) => {
           setAdding(false)
@@ -571,10 +589,39 @@ export default function Orders() {
       <Modal title="New order" open={adding} onClose={() => setAdding(false)}>
         <form onSubmit={save}>
           <Field label="Telegram">
-            <input className={inputClass} value={form.telegram} onChange={(e) => setForm({ ...form, telegram: e.target.value })} placeholder="@username" />
+            <input
+              className={inputClass}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              list="known-customers"
+              value={form.telegram}
+              onChange={(e) => setForm({ ...form, telegram: e.target.value })}
+              placeholder="@username"
+            />
           </Field>
+          <datalist id="known-customers">
+            {customers.map((c) => (
+              <option key={c.handle} value={c.handle} />
+            ))}
+          </datalist>
+          {returning && (
+            <p className="-mt-1 mb-3 flex items-center gap-1.5 rounded-control bg-brand/10 px-3 py-2 text-xs font-semibold text-brand">
+              <Repeat size={13} strokeWidth={2.6} />
+              Returning customer · {returning.count} order{returning.count !== 1 ? 's' : ''}, last {formatDate(returning.last)}
+            </p>
+          )}
           <Field label="Email">
-            <input className={inputClass} type="email" value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} />
+            <input
+              className={inputClass}
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={form.customer_email}
+              onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
+            />
           </Field>
           <p className="mb-3 text-xs text-ink-muted">You can add items and details on the next screen.</p>
           <PrimaryButton type="submit" disabled={insert.isPending}>

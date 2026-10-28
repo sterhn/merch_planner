@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Send, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
 import { useDelete, useList, useUpdate } from '../hooks/useTable'
@@ -9,6 +9,7 @@ import { formatDate, formatRub } from '../lib/format'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
+import { failureMessage } from '../lib/errorMessage'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import { calculatedTotal, groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
 import { openPrintWindow, receiptPageHtml, singleOrderPageHtml } from '../lib/printOrder'
@@ -22,6 +23,7 @@ import { AddButton, DangerButton, IconButton } from '../components/FormField'
 import OrderDetailsForm from './order/OrderDetailsForm'
 import { AddLineSheet, EditLineSheet, ImportSheet } from './order/LineSheets'
 import MessagesSheet from './order/MessagesSheet'
+import { telegramLink } from '../lib/customerMessages'
 
 /** The order as some cached orders list already holds it, if any. */
 function cachedListRow(qc: QueryClient, id: string | undefined): { row: Order; updatedAt: number } | undefined {
@@ -34,6 +36,9 @@ function cachedListRow(qc: QueryClient, id: string | undefined): { row: Order; u
   }
   return undefined
 }
+
+const ACTION_CHIP =
+  'tap glass flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-bold text-ink disabled:opacity-50'
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>()
@@ -165,6 +170,9 @@ export default function OrderDetail() {
 
   if (!order) return <EmptyState icon={Loader2} spin message="Loading…" />
 
+  const contact = order.telegram || order.customer_email || ''
+  const chat = telegramLink(order.telegram)
+
   // Before migration 010 every total was typed by hand.
   const manualTotal = order.total_manual ?? true
   const calculated = calculatedTotal(itemsTotal, order.shipping_fee, order.discount)
@@ -204,6 +212,36 @@ export default function OrderDetail() {
     openPrintWindow(singleOrderPageHtml(order!, orderedLines, itemNames, grouped ? fandomGroups : null))
   }
 
+  // No confirm step: the line comes off at once and the toast offers it back.
+  function removeLine(l: OrderItem, name: string) {
+    haptic()
+    qc.setQueryData<OrderItem[]>(['order_items', id], (rows) => rows?.filter((r) => r.id !== l.id))
+    deleteLine.mutate(l.id, {
+      onSuccess: () =>
+        showToast(`Removed ${name}`, {
+          label: 'Undo',
+          onClick: () => void restoreLine(l),
+        }),
+      onError: () => void qc.invalidateQueries({ queryKey: ['order_items', id] }),
+    })
+  }
+
+  // Puts a removed line back as it was (a new row; the database re-applies the
+  // total and, on a sent order, the stock).
+  async function restoreLine(l: OrderItem) {
+    const { error } = await supabase.from('order_items').insert({
+      order_id: l.order_id,
+      item_id: l.item_id,
+      name_text: l.name_text,
+      category: l.category,
+      qty: l.qty,
+      unit_price: l.unit_price,
+      position: l.position,
+    })
+    if (error) showToast(failureMessage('Undo', error))
+    for (const key of ['order_items', 'orders', 'items']) void qc.invalidateQueries({ queryKey: [key] })
+  }
+
   function printReceipt() {
     openPrintWindow(receiptPageHtml(order!, orderedLines, itemNames))
   }
@@ -241,7 +279,7 @@ export default function OrderDetail() {
           tone="danger"
           label={`Remove ${catalogItem?.name ?? l.name_text ?? 'item'}`}
           className="print:hidden"
-          onClick={() => confirm('Remove this item?', () => deleteLine.mutate(l.id))}
+          onClick={() => removeLine(l, catalogItem?.name ?? l.name_text ?? 'item')}
         />
       </li>
     )
@@ -257,27 +295,43 @@ export default function OrderDetail() {
         Back to orders
       </button>
 
-      <PageHeader title={order.telegram || order.customer_email || 'Order'}>
-        <IconButton
-          icon={MessageSquareText}
-          label="Message to customer"
+      {/* The actions get their own labelled row: four icons beside the title
+          left a phone with "buyer0…" for the customer's name. */}
+      <PageHeader title={contact || 'Order'} subtitle={`Order from ${formatDate(order.created_at)}`}>
+        <span className="font-display text-xl">{formatRub(order.total_price)}</span>
+      </PageHeader>
+
+      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 print:hidden" role="toolbar" aria-label="Order actions">
+        {chat && (
+          <a href={chat} target="_blank" rel="noreferrer" onClick={() => haptic()} className={ACTION_CHIP}>
+            <Send size={16} className="text-brand" />
+            Chat
+          </a>
+        )}
+        <button
+          type="button"
+          className={ACTION_CHIP}
           onClick={() => {
             haptic()
             setMessaging(true)
           }}
-          className="print:hidden"
-        />
-        <IconButton
-          icon={exporting ? Loader2 : ImageDown}
-          label="Share as image"
-          onClick={exportImage}
-          disabled={exporting}
-          className={`print:hidden ${exporting ? '[&_svg]:animate-spin' : ''}`}
-        />
-        <IconButton icon={Printer} label="Print / PDF" onClick={printOrder} className="print:hidden" />
-        <IconButton icon={Receipt} label="Receipt" onClick={printReceipt} className="print:hidden" />
-        <span className="font-display text-lg">{formatRub(order.total_price)}</span>
-      </PageHeader>
+        >
+          <MessageSquareText size={16} className="text-brand" />
+          Message
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={exportImage} disabled={exporting}>
+          {exporting ? <Loader2 size={16} className="animate-spin text-brand" /> : <ImageDown size={16} className="text-brand" />}
+          Image
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={printOrder}>
+          <Printer size={16} className="text-brand" />
+          Print
+        </button>
+        <button type="button" className={ACTION_CHIP} onClick={printReceipt}>
+          <Receipt size={16} className="text-brand" />
+          Receipt
+        </button>
+      </div>
 
       <div className="mb-5 flex gap-2 *:flex-1 print:hidden">
         <StatusBadge on={order.paid} label="paid" onClick={() => toggle('paid')} />
@@ -414,7 +468,7 @@ export default function OrderDetail() {
           order={order}
           itemsTotal={itemsTotal}
           pending={updateOrder.isPending}
-          onSave={(values) => updateOrder.mutate({ id: id!, values })}
+          onSave={(values) => updateOrder.mutateAsync({ id: id!, values })}
         />
 
         {/* A glass pill behind it: red text straight on the foil is ~2.7:1. */}
@@ -439,6 +493,7 @@ export default function OrderDetail() {
         itemNames={itemNames}
         stockFor={(item) => effectiveStock(item, bundleGroups, itemNames)}
         nextPosition={nextPosition}
+        lines={lines ?? []}
       />
 
       {editingLine && (
