@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import BrandMark from './components/BrandMark'
@@ -13,17 +13,46 @@ import Dashboard from './pages/Dashboard'
 // The dashboard is the first screen, so it ships in the main bundle; every
 // other page loads on first visit (and is precached by the PWA, so offline
 // still works). Layout's <Suspense> covers the moment one is fetching.
-const Orders = lazy(() => import('./pages/Orders'))
-const OrderDetail = lazy(() => import('./pages/OrderDetail'))
-const Packing = lazy(() => import('./pages/Packing'))
-const Catalog = lazy(() => import('./pages/Catalog'))
-const Collects = lazy(() => import('./pages/Collects'))
-const Expenses = lazy(() => import('./pages/Expenses'))
-const SettingsPage = lazy(() => import('./pages/Settings'))
-const Insights = lazy(() => import('./pages/Insights'))
+const PAGES = {
+  orders: () => import('./pages/Orders'),
+  orderDetail: () => import('./pages/OrderDetail'),
+  packing: () => import('./pages/Packing'),
+  catalog: () => import('./pages/Catalog'),
+  collects: () => import('./pages/Collects'),
+  expenses: () => import('./pages/Expenses'),
+  settings: () => import('./pages/Settings'),
+  insights: () => import('./pages/Insights'),
+}
+const Orders = lazy(PAGES.orders)
+const OrderDetail = lazy(PAGES.orderDetail)
+const Packing = lazy(PAGES.packing)
+const Catalog = lazy(PAGES.catalog)
+const Collects = lazy(PAGES.collects)
+const Expenses = lazy(PAGES.expenses)
+const SettingsPage = lazy(PAGES.settings)
+const Insights = lazy(PAGES.insights)
+
+/**
+ * Once the dashboard is up and the browser is idle, load the other pages in
+ * the background, so the first tap on a tab opens it straight away instead of
+ * flashing the loading dots while its chunk downloads and parses.
+ */
+function usePreloadPages(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    const load = () => Object.values(PAGES).forEach((page) => void page().catch(() => {}))
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(load, { timeout: 4000 })
+      return () => cancelIdleCallback(id)
+    }
+    const id = setTimeout(load, 1500)
+    return () => clearTimeout(id)
+  }, [enabled])
+}
 
 export default function App() {
   const { session, loading } = useAuth()
+  usePreloadPages(Boolean(session))
 
   if (!supabaseConfigured) {
     return (

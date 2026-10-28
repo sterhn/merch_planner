@@ -24,6 +24,8 @@ import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
 import { useLaunchFlag } from '../hooks/useLaunchFlag'
 import SwipeableRow from '../components/SwipeableRow'
+import RevealMore from '../components/RevealMore'
+import { useReveal } from '../hooks/useReveal'
 import { AddButton, DangerButton, Field, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 
@@ -114,6 +116,20 @@ export default function Expenses() {
     return monthRange(keys[0], last).map((month) => ({ month, total: totals.get(month) ?? 0 }))
   }, [feed])
 
+  // Month totals come from every row; only the rows themselves are revealed
+  // a batch at a time.
+  const reveal = useReveal((feed ?? []).length, 'expenses')
+  const visibleMonths = useMemo(() => {
+    let budget = reveal.limit
+    const out: [string, { rows: ExpenseFeedRow[]; total: number }][] = []
+    for (const [month, group] of byMonth) {
+      if (budget <= 0) break
+      out.push([month, { ...group, rows: group.rows.slice(0, budget) }])
+      budget -= group.rows.length
+    }
+    return out
+  }, [byMonth, reveal.limit])
+
   function save(e: React.FormEvent) {
     e.preventDefault()
     const values = {
@@ -170,7 +186,7 @@ export default function Expenses() {
 
       {monthlyTotals.length > 0 && <ExpenseChart months={monthlyTotals} />}
 
-      {byMonth.map(([month, { rows, total }]) => (
+      {visibleMonths.map(([month, { rows, total }]) => (
         <section key={month} className="mb-5">
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="font-display text-base">{formatMonth(month)}</h2>
@@ -247,6 +263,8 @@ export default function Expenses() {
           </div>
         </section>
       ))}
+
+      {reveal.hasMore && <RevealMore onReveal={reveal.more} remaining={(feed ?? []).length - reveal.limit} />}
 
       <Modal title={editingRow ? 'Edit expense' : 'Add expense'} open={editing !== null} onClose={closeEditor}>
         <form onSubmit={save}>

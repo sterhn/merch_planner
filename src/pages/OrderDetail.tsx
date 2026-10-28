@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
@@ -23,6 +23,18 @@ import OrderDetailsForm from './order/OrderDetailsForm'
 import { AddLineSheet, EditLineSheet, ImportSheet } from './order/LineSheets'
 import MessagesSheet from './order/MessagesSheet'
 
+/** The order as some cached orders list already holds it, if any. */
+function cachedListRow(qc: QueryClient, id: string | undefined): { row: Order; updatedAt: number } | undefined {
+  if (!id) return undefined
+  for (const query of qc.getQueryCache().findAll({ queryKey: ['orders'] })) {
+    const data = query.state.data
+    if (!Array.isArray(data)) continue
+    const row = (data as Order[]).find((o) => o.id === id)
+    if (row) return { row, updatedAt: query.state.dataUpdatedAt }
+  }
+  return undefined
+}
+
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -36,6 +48,10 @@ export default function OrderDetail() {
       return data as Order
     },
     enabled: Boolean(id),
+    // Opened from a list, the row is already in the cache — show it at once
+    // instead of a loading screen, and refresh in the background as usual.
+    initialData: () => cachedListRow(qc, id)?.row,
+    initialDataUpdatedAt: () => cachedListRow(qc, id)?.updatedAt,
   })
 
   const {

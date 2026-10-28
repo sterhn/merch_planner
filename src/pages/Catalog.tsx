@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { Archive, LayoutGrid, List, Minus, Plus, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -19,6 +19,8 @@ import SearchInput from '../components/SearchInput'
 import { AddButton, IconButton, inputClass, PrimaryButton } from '../components/FormField'
 import { haptic } from '../lib/haptics'
 import ItemEditor from './catalog/ItemEditor'
+import { useReveal } from '../hooks/useReveal'
+import RevealMore from '../components/RevealMore'
 
 function ItemImage({ src, type }: { src: string | null; type: string | null }) {
   if (src) {
@@ -130,8 +132,10 @@ export default function Catalog() {
   // Leaving the archive view once it's empty (the last item was restored).
   const showArchived = view.archived && archivedCount > 0
 
+  // Typing stays snappy on a big catalog: the filter catches up a frame later.
+  const search = useDeferredValue(view.search)
   const filtered = useMemo(() => {
-    const q = view.search.trim().toLowerCase()
+    const q = search.trim().toLowerCase()
     const matching = (items ?? []).filter((i) => {
       if (Boolean(i.archived) !== showArchived) return false
       if (view.type && i.type !== view.type) return false
@@ -145,7 +149,13 @@ export default function Catalog() {
       )
     })
     return sortCatalog(matching, sort, (i) => canMakeById.get(i.id) ?? i.stock_qty ?? 0)
-  }, [items, view, showArchived, sort, canMakeById])
+  }, [items, view.type, view.fandom, search, showArchived, sort, canMakeById])
+
+  const reveal = useReveal(
+    filtered.length,
+    `${search}|${view.type}|${view.fandom}|${showArchived}|${sort}|${view.layout}`,
+  )
+  const shown = filtered.slice(0, reveal.limit)
 
   function openEditor(item: Item | 'new') {
     setEditing(item)
@@ -238,7 +248,7 @@ export default function Catalog() {
 
       {view.layout === 'grid' ? (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-          {filtered.map((item) => {
+          {shown.map((item) => {
             const canMake = canMakeById.get(item.id) ?? null
             const stockShown = canMake ?? item.stock_qty ?? 0
             return (
@@ -287,7 +297,7 @@ export default function Catalog() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((item) => {
+          {shown.map((item) => {
             const canMake = canMakeById.get(item.id) ?? null
             const parts = bundleMap.get(item.id) ?? []
             const stockShown = canMake ?? item.stock_qty ?? 0
@@ -339,6 +349,8 @@ export default function Catalog() {
           })}
         </div>
       )}
+
+      {reveal.hasMore && <RevealMore onReveal={reveal.more} remaining={filtered.length - reveal.limit} />}
 
       {editing !== null && (
         <ItemEditor

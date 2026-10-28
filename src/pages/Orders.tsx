@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PackageOpen, BadgeCheck, Send, PackageCheck, Trash2, Loader2, Printer, RotateCcw, X } from 'lucide-react'
 import type { Order, OrderItem, OrderWithPhotos } from '../lib/types'
 import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub, localISODate, todayISO } from '../lib/format'
+import { useReveal } from '../hooks/useReveal'
+import RevealMore from '../components/RevealMore'
 import { agoLabel, daysBetween } from '../lib/greeting'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from '../hooks/useConfirm'
@@ -46,6 +48,24 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'done', label: 'Done' },
 ]
+
+const SORTS = [
+  { key: 'newest', label: 'Newest first' },
+  { key: 'oldest', label: 'Oldest first' },
+  { key: 'total', label: 'Biggest first' },
+] as const
+
+type Sort = (typeof SORTS)[number]['key']
+
+function sortOrders<T extends Order>(rows: T[], sort: Sort): T[] {
+  // The list arrives newest first (see useList below).
+  if (sort === 'oldest') return [...rows].reverse()
+  if (sort === 'total') return [...rows].sort((a, b) => (b.total_price ?? 0) - (a.total_price ?? 0))
+  return rows
+}
+
+/** Rough height of an order row, to reveal enough rows to restore a scroll offset into. */
+const ROW_ESTIMATE_PX = 80
 
 function matchesStatus(o: Order, filter: Filter): boolean {
   switch (filter) {
@@ -150,6 +170,12 @@ export default function Orders() {
     setSearchParams(f === 'to_send' ? {} : { filter: f }, { replace: true })
   }
   const [deliveryFilter, setDeliveryFilter] = useState(() => ordersView().delivery)
+  const [sort, setSort] = useState<Sort>(() => {
+    const saved = ordersView().sort
+    return SORTS.some((s) => s.key === saved) ? (saved as Sort) : 'newest'
+  })
+  // Typing stays snappy on a long list: the filter catches up a frame later.
+  const deferredSearch = useDeferredValue(search)
   const launchNew = useLaunchFlag()
   const [adding, setAdding] = useState(launchNew)
   const [form, setForm] = useState({ telegram: '', customer_email: '' })
@@ -195,7 +221,7 @@ export default function Orders() {
   // Search and delivery narrow the pool; the status chips then split it, each
   // chip showing how many it would leave.
   const pool = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = deferredSearch.trim().toLowerCase()
     return (orders ?? []).filter((o) => {
       if (q) {
         const contact = `${o.telegram ?? ''} ${o.customer_email ?? ''}`.toLowerCase()
@@ -208,7 +234,7 @@ export default function Orders() {
       if (deliveryFilter && o.delivery_method !== deliveryFilter) return false
       return true
     })
-  }, [orders, search, deliveryFilter])
+  }, [orders, deferredSearch, deliveryFilter])
 
   const counts = useMemo(() => {
     const c = {} as Record<Filter, number>
@@ -216,7 +242,11 @@ export default function Orders() {
     return c
   }, [pool])
 
-  const filtered = useMemo(() => pool.filter((o) => matchesStatus(o, filter)), [pool, filter])
+  const filtered = useMemo(() => sortOrders(pool.filter((o) => matchesStatus(o, filter)), sort), [pool, filter, sort])
+
+  // Enough rows up front to scroll back to where the list was left.
+  const [initialRows] = useState(() => Math.max(40, Math.ceil(ordersView().scrollY / ROW_ESTIMATE_PX) + 20))
+  const reveal = useReveal(filtered.length, `${filter}|${deferredSearch}|${deliveryFilter}|${sort}`, initialRows)
 
   // Resolved against the loaded list, so a deleted order stops offering a jump
   // back and the card always shows the order's current contact.
@@ -355,10 +385,10 @@ export default function Orders() {
         ))}
       </div>
 
-      {deliveryTypes.length > 0 && (
-        <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2">
+        {deliveryTypes.length > 0 && (
           <select
-            className={`${inputClass} max-w-48 text-xs`}
+            className={`${inputClass} h-11 min-w-0 flex-1 text-sm`}
             aria-label="Filter by delivery type"
             value={deliveryFilter}
             onChange={(e) => {
@@ -373,19 +403,34 @@ export default function Orders() {
               </option>
             ))}
           </select>
-          {deliveryFilter && (
-            <button
-              onClick={() => {
-                setDeliveryFilter('')
-                saveOrdersView({ delivery: '' })
-              }}
-              className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        <select
+          className={`${inputClass} h-11 min-w-0 flex-1 text-sm`}
+          aria-label="Sort orders"
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value as Sort)
+            saveOrdersView({ sort: e.target.value })
+          }}
+        >
+          {SORTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        {deliveryFilter && (
+          <button
+            onClick={() => {
+              setDeliveryFilter('')
+              saveOrdersView({ delivery: '' })
+            }}
+            className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       {filter === 'to_send' && filtered.length > 0 && (
         <div className="mb-3 grid grid-cols-2 gap-2">
@@ -422,7 +467,7 @@ export default function Orders() {
       />
 
       <div className="space-y-2">
-        {filtered.map((o) => {
+        {filtered.slice(0, reveal.limit).map((o) => {
           const photos = [...new Set(
             (o.order_items ?? []).map((oi) => oi.item?.image_url).filter(Boolean) as string[]
           )].slice(0, 6)
@@ -491,7 +536,10 @@ export default function Orders() {
                       <OrderStatus paid={o.paid} sent={o.sent} delivered={o.delivered} />
                     </div>
                   </div>
-                  <span className="shrink-0 font-display text-sm">{formatRub(o.total_price)}</span>
+                  <span className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="font-display text-sm">{formatRub(o.total_price)}</span>
+                    <span className="text-2xs font-semibold text-ink-faint">{formatDate(o.created_at)}</span>
+                  </span>
                 </Link>
                 {/* SwipeableRow ignores mouse pointers, so without these the only way
                     to delete or advance an order on a laptop would be to open it. */}
@@ -518,6 +566,7 @@ export default function Orders() {
           )
         })}
       </div>
+      {reveal.hasMore && <RevealMore onReveal={reveal.more} remaining={filtered.length - reveal.limit} />}
 
       <Modal title="New order" open={adding} onClose={() => setAdding(false)}>
         <form onSubmit={save}>
