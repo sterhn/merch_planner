@@ -142,6 +142,17 @@ export default function Expenses() {
     return out
   }, [byMonth, reveal.limit])
 
+  // Descriptions typed before, newest first, each with the category it was
+  // filed under — recurring costs ("Пакеты zip-lock") are one tap to repeat.
+  const pastDescriptions = useMemo(() => {
+    const m = new Map<string, Expense['category']>()
+    for (const row of allRows ?? []) {
+      const d = row.description?.trim()
+      if (row.source === 'manual' && d && !m.has(d)) m.set(d, row.category as Expense['category'])
+    }
+    return m
+  }, [allRows])
+
   function save(e: React.FormEvent) {
     e.preventDefault()
     const values = {
@@ -197,7 +208,7 @@ export default function Expenses() {
       />
 
       {categories.length > 1 && (
-        <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Category">
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter by category">
           <FilterChip active={category === null} onClick={() => setCategory(null)}>
             All
           </FilterChip>
@@ -310,7 +321,22 @@ export default function Expenses() {
             </select>
           </Field>
           <Field label="Description">
-            <input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <input
+              className={inputClass}
+              list="past-expenses"
+              value={form.description}
+              onChange={(e) => {
+                const description = e.target.value
+                // Picking a past description brings its category along (new rows only).
+                const known = editing === 'new' ? pastDescriptions.get(description.trim()) : undefined
+                setForm({ ...form, description, ...(known && (NEW_CATEGORIES as readonly string[]).includes(known) ? { category: known } : {}) })
+              }}
+            />
+            <datalist id="past-expenses">
+              {[...pastDescriptions.keys()].slice(0, 50).map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
           </Field>
           {/* text + inputMode, not type="number": a number input rejects the comma
               decimal separator a Russian keyboard produces (parseMoney handles it). */}
