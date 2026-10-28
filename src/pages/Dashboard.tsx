@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import type { LayoutContext } from '../components/Layout'
 import {
   AlertTriangle,
   CalendarClock,
@@ -11,6 +12,7 @@ import {
   MoonStar,
   PackageCheck,
   PartyPopper,
+  Search,
   Send,
   Sparkle,
   Sun,
@@ -103,6 +105,21 @@ function changeVs(
   const title = previous.toDate ? `Compared with the same days of ${short}` : `Compared with all of ${short}`
   if (pct === 0) return { text: `same as ${short}`, good: true, title }
   return { text: `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs ${short}`, good: pct > 0 === upIsGood, title }
+}
+
+/** Search lives in the sidebar on desktop; mobile opens it from the dashboard header. */
+function SearchButton() {
+  const { openSearch } = useOutletContext<LayoutContext>()
+  return (
+    <button
+      type="button"
+      onClick={openSearch}
+      aria-label="Search everything"
+      className="tap grid size-11 place-items-center rounded-full text-ink-faint hover:bg-surface-2 hover:text-ink md:hidden"
+    >
+      <Search size={19} />
+    </button>
+  )
 }
 
 /** Settings (and sign-out) live in the sidebar on desktop; mobile reaches them here. */
@@ -335,6 +352,7 @@ export default function Dashboard() {
       icon={DAY_ICON[part]}
       tone={DAY_TONE[part]}
     >
+      <SearchButton />
       <SettingsLink />
     </PageHeader>
   )

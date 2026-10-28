@@ -57,7 +57,9 @@ export default function Modal({ title, open, onClose, children }: ModalProps) {
 
   useEffect(() => {
     if (!open) return
-    panelRef.current?.focus()
+    // Unless a field inside already took focus (autoFocus), focus the sheet.
+    const panel = panelRef.current
+    if (panel && !panel.contains(document.activeElement)) panel.focus()
     const token = Symbol('modal')
     modalStack.push(token)
     const prevOverflow = document.body.style.overflow

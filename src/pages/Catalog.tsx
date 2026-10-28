@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Archive, LayoutGrid, List, Minus, Plus, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -93,7 +94,28 @@ export default function Catalog() {
   const nudgeStock = useStockNudge()
   const launchNew = useLaunchFlag()
   const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
-  const [viewing, setViewing] = useState<Item | null>(null)
+  const [picked, setPicked] = useState<Item | null>(null)
+
+  // `?open=<id>` (from search) shows that item's card. Remembered once closed
+  // so the link can't reopen it before the URL loses its ?open.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openId = searchParams.get('open')
+  const [dismissedId, setDismissedId] = useState<string | null>(null)
+  const linked = openId && openId !== dismissedId && picked === null ? items?.find((i) => i.id === openId) : undefined
+  const viewing = picked ?? linked ?? null
+  function setViewing(item: Item | null) {
+    setPicked(item)
+    if (item === null && openId) {
+      setDismissedId(openId)
+      setSearchParams(
+        (p) => {
+          p.delete('open')
+          return p
+        },
+        { replace: true },
+      )
+    }
+  }
 
   const itemById = useMemo(() => {
     const m = new Map<string, Item>()

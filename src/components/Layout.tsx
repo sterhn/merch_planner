@@ -1,6 +1,6 @@
-import { Suspense } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { CloudOff, DatabaseZap, LogOut } from 'lucide-react'
+import { CloudOff, DatabaseZap, LogOut, Search } from 'lucide-react'
 import { useSignOut } from '../hooks/useAuth'
 import { useOnline } from '../hooks/useOnline'
 import { useShortcuts } from '../hooks/useShortcuts'
@@ -11,6 +11,16 @@ import LoadingDots from './LoadingDots'
 import ScrollManager from './ScrollManager'
 import { INSIGHTS, SECTIONS, SETTINGS } from './sections'
 import { TONE_BLOB, type Tone } from './tones'
+
+// Only loaded the first time it's opened.
+const GlobalSearch = lazy(() => import('./GlobalSearch'))
+
+/** What Layout hands its pages through the Outlet (read with useLayout). */
+export interface LayoutContext {
+  openSearch: () => void
+}
+
+const SEARCH_KEYS = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘K' : 'Ctrl K'
 
 const NAV = Object.values(SECTIONS)
 const SIDEBAR = [...NAV, INSIGHTS, SETTINGS]
@@ -84,7 +94,12 @@ const ACTIVE_PILL: Record<Tone, string> = {
 export default function Layout() {
   const signOut = useSignOut()
   const { pathname } = useLocation()
-  useShortcuts()
+  const [searching, setSearching] = useState(false)
+  const openSearch = useCallback(() => {
+    haptic(5)
+    setSearching(true)
+  }, [])
+  useShortcuts(openSearch)
   // Only the top-level section, so opening an order doesn't re-fade the shell.
   const section = pathname.split('/')[1] ?? ''
 
@@ -100,6 +115,15 @@ export default function Layout() {
             <p className="text-2xs font-semibold text-ink-faint">your little shop ✿</p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={openSearch}
+          className="tap mx-3 mb-2 flex items-center gap-2 rounded-control bg-surface-2 px-3 py-2.5 text-left text-sm font-semibold text-ink-muted hover:text-ink"
+        >
+          <Search size={16} />
+          <span className="flex-1">Search</span>
+          <kbd className="rounded-md bg-surface px-1.5 font-sans text-2xs font-bold text-ink-muted">{SEARCH_KEYS}</kbd>
+        </button>
         <nav className="flex flex-1 flex-col gap-1 px-3">
           {SIDEBAR.map((n) => (
             <NavLink
@@ -145,10 +169,16 @@ export default function Layout() {
           <SchemaBanner />
           {/* Pages are lazy-loaded (App.tsx); the nav stays put while one arrives. */}
           <Suspense fallback={<LoadingDots />}>
-            <Outlet />
+            <Outlet context={{ openSearch } satisfies LayoutContext} />
           </Suspense>
         </main>
       </div>
+
+      {searching && (
+        <Suspense fallback={null}>
+          <GlobalSearch onClose={() => setSearching(false)} />
+        </Suspense>
+      )}
 
       {/* Floating glass tab bar on mobile. Sits --spacing-nav tall, lifted 0.5rem
           above the safe area — the Toast offsets by the same sum. */}
