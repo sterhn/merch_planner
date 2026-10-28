@@ -28,7 +28,7 @@ import { useList } from '../hooks/useTable'
 import { useSettings } from '../hooks/useSettings'
 import { backupDue } from '../lib/settings'
 import { saveCatalogView } from '../lib/viewState'
-import { monthChange } from '../lib/compare'
+import { monthChange, periodTotals } from '../lib/compare'
 import EmptyState from '../components/EmptyState'
 import { SkeletonDashboard } from '../components/Skeleton'
 import {
@@ -227,29 +227,8 @@ export default function Dashboard() {
   }, [orders, expenses, shelf])
 
   const stats = useMemo(() => {
-    // Revenue and expenses for one period ('all' or a YYYY-MM month).
-    // `upToDay` cuts a month off at that day of the month (1–31).
-    const totalsFor = (p: string, upToDay = 31) => {
-      const inPeriod = (m: string | null) => p === 'all' || m === p
-      const byDay = (isoDate: string) => Number(isoDate.slice(8, 10)) <= upToDay
-      // Counted in the month the money came in. Orders paid before migration 010
-      // have no paid_at, so they fall back to the month they were created.
-      const orderRevenue = (orders ?? [])
-        .filter((o) => {
-          if (!o.paid) return false
-          const day = localISODate(paidMonthSource(o))
-          return inPeriod(day.slice(0, 7)) && byDay(day)
-        })
-        .reduce((s, o) => s + (o.total_price ?? 0), 0)
-      // The shelf page is archived, but its historical income still counts —
-      // folded into Revenue so past months (and the all-time net) stay truthful.
-      const shelfIncome = (shelf ?? []).filter((r) => inPeriod(r.month)).reduce((s, r) => s + (r.income ?? 0), 0)
-      const totalExpenses = (expenses ?? [])
-        .filter((e) => inPeriod(monthKey(e.date)) && byDay(e.date))
-        .reduce((s, e) => s + e.amount, 0)
-      return { revenue: orderRevenue + shelfIncome, totalExpenses }
-    }
-    const { revenue, totalExpenses } = totalsFor(period)
+    const data = { orders: orders ?? [], shelf: shelf ?? [], expenses: expenses ?? [] }
+    const { revenue, expenses: totalExpenses } = periodTotals(data, period)
     // The month before, for the "vs last month" lines — only when it has data.
     const prevPeriod = period === 'all' ? null : periods[periods.indexOf(period) - 1]
     // A month still under way is compared with the same days of the one before,
@@ -258,7 +237,7 @@ export default function Dashboard() {
     const sameDays = period === today.slice(0, 7) ? Number(today.slice(8, 10)) : 31
     const previous =
       prevPeriod && prevPeriod !== 'all'
-        ? { month: prevPeriod, toDate: sameDays < 31, ...totalsFor(prevPeriod, sameDays) }
+        ? { month: prevPeriod, toDate: sameDays < 31, ...periodTotals(data, prevPeriod, sameDays) }
         : null
     const unpaid = (orders ?? []).filter((o) => !o.paid)
     return {
@@ -446,7 +425,7 @@ export default function Dashboard() {
             index={1}
             change={
               stats.previous
-                ? monthChange(stats.totalExpenses, stats.previous.totalExpenses, stats.previous.month, {
+                ? monthChange(stats.totalExpenses, stats.previous.expenses, stats.previous.month, {
                     toDate: stats.previous.toDate,
                     upIsGood: false,
                   })
@@ -544,9 +523,9 @@ export default function Dashboard() {
             <Link
               to={`/collects?new=1&items=${lowStock.slice(0, 30).map((i) => i.id).join(',')}`}
               onClick={() => haptic(5)}
-              className="tap mt-2 flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-sky/40 text-sm font-bold text-ink hover:bg-sky/10"
+              className="tap mt-2 flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-brand/40 text-sm font-bold text-brand hover:bg-brand/10"
             >
-              <SECTIONS.collects.icon size={15} className="text-sky" />
+              <SECTIONS.collects.icon size={15} />
               Plan a reprint
             </Link>
 

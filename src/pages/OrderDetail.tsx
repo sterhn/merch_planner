@@ -4,12 +4,11 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { ArrowLeft, ClipboardPaste, History, ImageDown, Layers, Loader2, MessageSquareText, PackageSearch, Printer, Receipt, Send, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Item, Order, OrderItem } from '../lib/types'
-import { useDelete, useList, useUpdate } from '../hooks/useTable'
+import { useDelete, useInsert, useList, useUpdate } from '../hooks/useTable'
 import { formatDate, formatRub } from '../lib/format'
 import { renderOrderImage, shareOrderImage } from '../lib/orderImage'
 import { haptic } from '../lib/haptics'
 import { showToast } from '../lib/toast'
-import { failureMessage } from '../lib/errorMessage'
 import { effectiveStock, groupBundles, type BundleComponent } from '../lib/bundles'
 import { calculatedTotal, groupLinesByFandom, linesTotal, NO_FANDOM_LABEL, sortLinesByPrice } from '../lib/orderLines'
 import { openPrintWindow, receiptPageHtml, singleOrderPageHtml } from '../lib/printOrder'
@@ -45,7 +44,12 @@ export default function OrderDetail() {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
-  const { data: order, isError: orderMissing } = useQuery({
+  const {
+    data: order,
+    isError: orderMissing,
+    isStale: orderStale,
+    isFetchedAfterMount: orderFetched,
+  } = useQuery({
     queryKey: ['orders', id],
     queryFn: async (): Promise<Order> => {
       const { data, error } = await supabase.from('orders').select('*').eq('id', id!).single()
@@ -109,6 +113,7 @@ export default function OrderDetail() {
   // and the database recomputes the total — so line writes refresh orders too.
   // 'items' as well: a line change on a sent order moves stock (migration 010).
   const deleteLine = useDelete('order_items', ['orders', 'items'])
+  const restoreLineMutation = useInsert<OrderItem>('order_items', ['orders', 'items'])
   const { confirm, element: confirmSheet } = useConfirm()
 
   const [addingLine, setAddingLine] = useState(false)
@@ -220,7 +225,7 @@ export default function OrderDetail() {
       onSuccess: () =>
         showToast(`Removed ${name}`, {
           label: 'Undo',
-          onClick: () => void restoreLine(l),
+          onClick: () => restoreLine(l),
         }),
       onError: () => void qc.invalidateQueries({ queryKey: ['order_items', id] }),
     })
@@ -228,8 +233,8 @@ export default function OrderDetail() {
 
   // Puts a removed line back as it was (a new row; the database re-applies the
   // total and, on a sent order, the stock).
-  async function restoreLine(l: OrderItem) {
-    const { error } = await supabase.from('order_items').insert({
+  function restoreLine(l: OrderItem) {
+    restoreLineMutation.mutate({
       order_id: l.order_id,
       item_id: l.item_id,
       name_text: l.name_text,
@@ -238,8 +243,6 @@ export default function OrderDetail() {
       unit_price: l.unit_price,
       position: l.position,
     })
-    if (error) showToast(failureMessage('Undo', error))
-    for (const key of ['order_items', 'orders', 'items']) void qc.invalidateQueries({ queryKey: [key] })
   }
 
   function printReceipt() {
@@ -463,13 +466,22 @@ export default function OrderDetail() {
         {/* Re-keyed when the total switches between automatic and by-hand,
             so the form picks up the new mode. Not on total_price: that
             changes with every line edit and would wipe unsaved details. */}
-        <OrderDetailsForm
-          key={`${order.id}-${manualTotal}`}
-          order={order}
-          itemsTotal={itemsTotal}
-          pending={updateOrder.isPending}
-          onSave={(values) => updateOrder.mutateAsync({ id: id!, values })}
-        />
+        {/* The form copies the order once, when it mounts. If the header is
+            showing a stale row from a list, wait for the fresh one — saving a
+            form started from old details would write them back over newer ones. */}
+        {orderStale && !orderFetched ? (
+          <div className="rounded-card glass p-4 text-sm text-ink-muted" role="status">
+            Loading the latest details…
+          </div>
+        ) : (
+          <OrderDetailsForm
+            key={`${order.id}-${manualTotal}`}
+            order={order}
+            itemsTotal={itemsTotal}
+            pending={updateOrder.isPending}
+            onSave={(values) => updateOrder.mutateAsync({ id: id!, values })}
+          />
+        )}
 
         {/* A glass pill behind it: red text straight on the foil is ~2.7:1. */}
         <div className="mt-4 rounded-full glass">

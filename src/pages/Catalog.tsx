@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Archive, LayoutGrid, List, Minus, Plus, Tags } from 'lucide-react'
 import type { Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -102,13 +102,16 @@ export default function Catalog() {
   // so the link can't reopen it before the URL loses its ?open.
   const [searchParams, setSearchParams] = useSearchParams()
   const openId = searchParams.get('open')
-  const [dismissedId, setDismissedId] = useState<string | null>(null)
-  const linked = openId && openId !== dismissedId && picked === null ? items?.find((i) => i.id === openId) : undefined
+  // Which visit's link was dismissed (by location key, not id): the same id
+  // opened again later — from search, say — is a new visit and opens again.
+  const { key: locationKey } = useLocation()
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
+  const linked = openId && locationKey !== dismissedKey && picked === null ? items?.find((i) => i.id === openId) : undefined
   const viewing = picked ?? linked ?? null
   function setViewing(item: Item | null) {
     setPicked(item)
     if (item === null && openId) {
-      setDismissedId(openId)
+      setDismissedKey(locationKey)
       setSearchParams(
         (p) => {
           p.delete('open')

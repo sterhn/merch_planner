@@ -68,6 +68,20 @@ function sortOrders<T extends Order>(rows: T[], sort: Sort): T[] {
   return rows
 }
 
+/**
+ * The database stamps paid_at / sent_at when those flags go on; the optimistic
+ * copy in the cache stamps them too, so an order sent a moment ago doesn't
+ * look like one sent before the stamps existed (e.g. to "mark delivered").
+ */
+function withStamps(values: Partial<Order>): Partial<Order> {
+  const now = new Date().toISOString()
+  return {
+    ...values,
+    ...(values.paid === true ? { paid_at: now } : {}),
+    ...(values.sent === true ? { sent_at: now } : {}),
+  }
+}
+
 /** Rough height of an order row, to reveal enough rows to restore a scroll offset into. */
 const ROW_ESTIMATE_PX = 80
 
@@ -104,8 +118,9 @@ export default function Orders() {
   // fall back to a refetch if the save fails. Without this the swipe felt
   // laggy next to the same toggle on the order screen.
   function setStatus(id: string, values: Partial<Order>) {
+    const patch = withStamps(values)
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
-      Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...values } : o)) : data,
+      Array.isArray(data) ? data.map((o) => (o.id === id ? { ...o, ...patch } : o)) : data,
     )
     update.mutate(
       { id, values },
@@ -116,9 +131,12 @@ export default function Orders() {
   // Packing day: print the "To send" list, pack everything, then mark the lot
   // sent in one go instead of a swipe per order.
   const bulkUpdate = useMutation({
+    // Ids travel in the URL, so a long list goes in batches.
     mutationFn: async ({ ids, values }: { ids: string[]; values: Partial<Order> }) => {
-      const { error } = await supabase.from('orders').update(values).in('id', ids)
-      if (error) throw error
+      for (const batch of chunk(ids, 80)) {
+        const { error } = await supabase.from('orders').update(values).in('id', batch)
+        if (error) throw error
+      }
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] })
@@ -128,8 +146,9 @@ export default function Orders() {
 
   function setStatusMany(ids: string[], values: Partial<Order>) {
     const set = new Set(ids)
+    const patch = withStamps(values)
     qc.setQueriesData<OrderWithPhotos[]>({ queryKey: ['orders'] }, (data) =>
-      Array.isArray(data) ? data.map((o) => (set.has(o.id) ? { ...o, ...values } : o)) : data,
+      Array.isArray(data) ? data.map((o) => (set.has(o.id) ? { ...o, ...patch } : o)) : data,
     )
     bulkUpdate.mutate({ ids, values })
   }
@@ -445,7 +464,7 @@ export default function Orders() {
               setDeliveryFilter('')
               saveOrdersView({ delivery: '' })
             }}
-            className="tap min-h-11 px-2 text-xs font-bold text-ink-faint hover:text-ink"
+            className="tap glass min-h-11 shrink-0 rounded-full px-3.5 text-xs font-bold text-ink-muted hover:text-ink"
           >
             Clear
           </button>

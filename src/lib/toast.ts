@@ -31,7 +31,13 @@ const MAX_VISIBLE = 3
  */
 export function showToast(text: string, action?: ToastAction) {
   const id = ++nextId
-  messages = [...messages, { id, text, action }].slice(-MAX_VISIBLE)
+  messages = [...messages, { id, text, action }]
+  // Over the limit, the oldest plain message goes first: an Undo may be the
+  // only way back from what it reports.
+  while (messages.length > MAX_VISIBLE) {
+    const plain = messages.findIndex((m) => !m.action)
+    messages = messages.filter((_, i) => i !== (plain === -1 ? 0 : plain))
+  }
   emit()
   setTimeout(() => dismissToast(id), action ? 8000 : 5000)
 }

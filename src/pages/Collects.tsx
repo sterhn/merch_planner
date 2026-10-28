@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Printer, AlertTriangle, PackageCheck, Truck, Wallet } from 'lucide-react'
 import type { Collect, CollectItem, Item } from '../lib/types'
 import { useList } from '../hooks/useTable'
@@ -82,10 +82,12 @@ export default function Collects() {
   const [searchParams, setSearchParams] = useSearchParams()
   const openId = searchParams.get('open')
   // Remembered so the link can't reopen the sheet in the moment between
-  // closing it and the URL losing its ?open.
-  const [dismissedId, setDismissedId] = useState<string | null>(null)
+  // closing it and the URL losing its ?open — by location key, not id, so the
+  // same collect opened again later (from search, say) still opens.
+  const { key: locationKey } = useLocation()
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
   const linked =
-    openId && openId !== dismissedId && editing === null && collectItems
+    openId && locationKey !== dismissedKey && editing === null && collectItems
       ? collects?.find((c) => c.id === openId)
       : undefined
   const current = editing ?? linked ?? null
@@ -94,7 +96,7 @@ export default function Collects() {
     setEditing(null)
     setDraftItems([])
     if (openId) {
-      setDismissedId(openId)
+      setDismissedKey(locationKey)
       setSearchParams(
         (p) => {
           p.delete('open')

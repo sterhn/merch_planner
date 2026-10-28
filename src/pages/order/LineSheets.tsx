@@ -39,6 +39,7 @@ export function AddLineSheet({
   // Line writes refresh orders too (the list embeds lines for its thumbnails
   // and search, and the database recomputes the total) and items (a line on a
   // sent order moves stock).
+  const qc = useQueryClient()
   const insertLine = useInsert<OrderItem>('order_items', ['orders', 'items'])
   const updateLine = useUpdate<OrderItem>('order_items', ['orders', 'items'])
   const [form, setForm] = useState(EMPTY_LINE)
@@ -58,12 +59,24 @@ export function AddLineSheet({
       else onClose()
     }
     // The same item at the same price is already on the order: one line ×3
-    // reads better than three lines ×1, on screen and on the printout.
-    const same = picked && lines.find((l) => l.item_id === picked.id && l.unit_price === unitPrice)
+    // reads better than three lines ×1, on screen and on the printout. Read
+    // from the cache, which each add below updates at once — the `lines` prop
+    // lags until the refetch, and a quick second "Add & next" would otherwise
+    // count from the old quantity and lose one.
+    const current = qc.getQueryData<OrderItem[]>(['order_items', orderId]) ?? lines
+    const same = picked && current.find((l) => l.item_id === picked.id && l.unit_price === unitPrice)
     if (same) {
+      const total = same.qty + qty
       updateLine.mutate(
-        { id: same.id, values: { qty: same.qty + qty } },
-        { onSuccess: () => done(`${picked.name} ×${same.qty + qty}`) },
+        { id: same.id, values: { qty: total } },
+        {
+          onSuccess: () => {
+            qc.setQueryData<OrderItem[]>(['order_items', orderId], (rows) =>
+              rows?.map((r) => (r.id === same.id ? { ...r, qty: total } : r)),
+            )
+            done(`${picked.name} ×${total}`)
+          },
+        },
       )
       return
     }
@@ -77,7 +90,12 @@ export function AddLineSheet({
         unit_price: unitPrice,
         position: nextPosition,
       },
-      { onSuccess: () => done(`Added ${picked?.name || form.name_text || 'item'}`) },
+      {
+        onSuccess: (created) => {
+          qc.setQueryData<OrderItem[]>(['order_items', orderId], (rows) => (rows ? [...rows, created] : rows))
+          done(`Added ${picked?.name || form.name_text || 'item'}`)
+        },
+      },
     )
   }
 
