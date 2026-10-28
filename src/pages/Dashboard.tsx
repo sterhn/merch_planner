@@ -552,6 +552,16 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+            {/* Start a collect with these items as its positions. */}
+            <Link
+              to={`/collects?new=1&items=${lowStock.slice(0, 30).map((i) => i.id).join(',')}`}
+              onClick={() => haptic(5)}
+              className="tap mt-2 flex min-h-11 items-center justify-center gap-1.5 rounded-full border-2 border-sky/40 text-sm font-bold text-ink hover:bg-sky/10"
+            >
+              <SECTIONS.collects.icon size={15} className="text-sky" />
+              Plan a reprint
+            </Link>
+
           </Card>
         )}
 

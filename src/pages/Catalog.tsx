@@ -94,6 +94,8 @@ export default function Catalog() {
   const nudgeStock = useStockNudge()
   const launchNew = useLaunchFlag()
   const [editing, setEditing] = useState<Item | 'new' | null>(launchNew ? 'new' : null)
+  // Set while the "new" editor is a duplicate of this item.
+  const [copyOf, setCopyOf] = useState<Item | undefined>()
   const [picked, setPicked] = useState<Item | null>(null)
 
   // `?open=<id>` (from search) shows that item's card. Remembered once closed
@@ -194,6 +196,7 @@ export default function Catalog() {
   const shown = filtered.slice(0, reveal.limit)
 
   function openEditor(item: Item | 'new') {
+    setCopyOf(undefined)
     setEditing(item)
   }
 
@@ -399,8 +402,14 @@ export default function Catalog() {
 
       {editing !== null && (
         <ItemEditor
-          key={editing === 'new' ? 'new' : editing.id}
+          key={editing === 'new' ? `new-${copyOf?.id ?? ''}` : editing.id}
           item={editing}
+          copyOf={editing === 'new' ? copyOf : undefined}
+          onDuplicate={(item) => {
+            haptic()
+            setCopyOf(item)
+            setEditing('new')
+          }}
           items={items ?? []}
           rawBundles={rawBundles ?? []}
           types={types}

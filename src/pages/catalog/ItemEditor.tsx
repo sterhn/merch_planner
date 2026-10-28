@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Archive, ArchiveRestore, X } from 'lucide-react'
+import { Archive, ArchiveRestore, Copy, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Item } from '../../lib/types'
 import { useDelete, useInsert, useUpdate } from '../../hooks/useTable'
@@ -27,7 +27,22 @@ import {
 
 const EMPTY = { type: '', fandom: '', sku: '', name: '', description: '', cost_price: '', sale_price: '', stock_qty: '', image_url: '', product_photo_url: '' }
 
-function formFor(item: Item | 'new') {
+function formFor(item: Item | 'new', copyOf: Item | undefined, items: Item[]) {
+  // A copy keeps the type, fandom, prices and description — the parts a
+  // variant shares — and starts its own SKU, stock and photos. (Photos aren't
+  // shared: replacing one item's photo deletes the old file from storage.)
+  if (copyOf) {
+    return {
+      ...EMPTY,
+      type: copyOf.type ?? '',
+      fandom: copyOf.fandom ?? '',
+      sku: copyOf.fandom ? autoSku(copyOf.fandom, copyOf.type ?? '', items) : '',
+      name: copyOf.name,
+      description: copyOf.description ?? '',
+      cost_price: copyOf.cost_price?.toString() ?? '',
+      sale_price: copyOf.sale_price?.toString() ?? '',
+    }
+  }
   if (item === 'new') return EMPTY
   return {
     type: item.type ?? '',
@@ -130,8 +145,14 @@ export default function ItemEditor({
   types,
   fandoms,
   onClose,
+  copyOf,
+  onDuplicate,
 }: {
   item: Item | 'new'
+  /** Start a new item from this one (Duplicate). */
+  copyOf?: Item
+  /** Opens a new item pre-filled from this one. */
+  onDuplicate?: (item: Item) => void
   items: Item[]
   rawBundles: BundleComponent[]
   types: string[]
@@ -149,10 +170,12 @@ export default function ItemEditor({
   // Becomes the created row after a first save, so a retry updates instead
   // of inserting a second copy.
   const [editing, setEditing] = useState<Item | 'new'>(item)
-  const [form, setForm] = useState(() => formFor(item))
+  const [form, setForm] = useState(() => formFor(item, copyOf, items))
   const [bundleRows, setBundleRows] = useState<{ component_id: string; qty: string }[]>(() =>
     item === 'new'
-      ? []
+      ? copyOf
+        ? rawBundles.filter((b) => b.bundle_id === copyOf.id).map((b) => ({ component_id: b.component_id, qty: String(b.qty) }))
+        : []
       : rawBundles.filter((b) => b.bundle_id === item.id).map((b) => ({ component_id: b.component_id, qty: String(b.qty) })),
   )
   // Index of the bundle row whose component picker modal is open
@@ -296,6 +319,11 @@ export default function ItemEditor({
     <>
       <Modal title={existing ? 'Edit item' : 'Add item'} open onClose={onClose}>
         <form onSubmit={save}>
+          {copyOf && !existing && (
+            <p className="mb-3 rounded-control bg-surface-2 px-3 py-2 text-sm font-semibold text-ink-muted">
+              Copy of {copyOf.name} — give it its own name, photo and stock.
+            </p>
+          )}
           {existing?.archived && (
             <p className="mb-3 rounded-control bg-surface-2 px-3 py-2 text-sm font-semibold text-ink-muted">
               Archived — hidden from the catalog and item pickers.
@@ -429,6 +457,12 @@ export default function ItemEditor({
           )}
           {existing && (
             <div className="mt-2 space-y-1">
+              {onDuplicate && !existing.archived && (
+                <SecondaryButton className="h-12 w-full" onClick={() => onDuplicate(existing)}>
+                  <Copy size={16} />
+                  Duplicate as a new item
+                </SecondaryButton>
+              )}
               <SecondaryButton
                 className="h-12 w-full"
                 onClick={() => void setArchived(!existing.archived)}

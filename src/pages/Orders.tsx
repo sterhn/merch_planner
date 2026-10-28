@@ -41,6 +41,9 @@ type Filter = 'all' | 'unpaid' | 'to_send' | 'sent' | 'done'
 /** Unpaid this long, an order row flags its age. */
 const UNPAID_NUDGE_DAYS = 7
 
+/** Sent this long ago, an order is offered for "mark delivered" in bulk. */
+const DELIVERED_AFTER_DAYS = 14
+
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'to_send', label: 'To send' },
   { key: 'sent', label: 'Sent' },
@@ -130,18 +133,20 @@ export default function Orders() {
     bulkUpdate.mutate({ ids, values })
   }
 
-  function markAllSent(ids: string[]) {
+  function markAll(ids: string[], flag: 'sent' | 'delivered') {
     confirm(
-      `Mark all ${ids.length} as sent? Their items come off catalog stock.`,
+      flag === 'sent'
+        ? `Mark all ${ids.length} as sent? Their items come off catalog stock.`
+        : `Mark all ${ids.length} as delivered?`,
       () => {
         celebrate()
-        setStatusMany(ids, { sent: true })
-        showToast(`${ids.length} order${ids.length !== 1 ? 's' : ''} marked sent`, {
+        setStatusMany(ids, { [flag]: true })
+        showToast(`${ids.length} order${ids.length !== 1 ? 's' : ''} marked ${flag}`, {
           label: 'Undo',
-          onClick: () => setStatusMany(ids, { sent: false }),
+          onClick: () => setStatusMany(ids, { [flag]: false }),
         })
       },
-      { label: 'Mark sent', tone: 'primary' },
+      { label: flag === 'sent' ? 'Mark sent' : 'Mark delivered', tone: 'primary' },
     )
   }
 
@@ -243,6 +248,16 @@ export default function Orders() {
   }, [pool])
 
   const filtered = useMemo(() => sortOrders(pool.filter((o) => matchesStatus(o, filter)), sort), [pool, filter, sort])
+
+  // Sent long enough ago to have arrived. Orders sent before migration 010
+  // have no sent_at; they're old by definition.
+  const longSent = useMemo(
+    () =>
+      filter === 'sent'
+        ? filtered.filter((o) => !o.sent_at || daysBetween(localISODate(o.sent_at), today) >= DELIVERED_AFTER_DAYS)
+        : [],
+    [filter, filtered, today],
+  )
 
   // Enough rows up front to scroll back to where the list was left.
   const [initialRows] = useState(() => Math.max(40, Math.ceil(ordersView().scrollY / ROW_ESTIMATE_PX) + 20))
@@ -462,13 +477,26 @@ export default function Orders() {
           </Link>
           <SecondaryButton
             tone="good"
-            onClick={() => markAllSent(filtered.map((o) => o.id))}
+            onClick={() => markAll(filtered.map((o) => o.id), 'sent')}
             disabled={bulkUpdate.isPending}
           >
             <Send size={15} />
             Mark all {filtered.length} sent
           </SecondaryButton>
         </div>
+      )}
+
+      {/* Parcels sent a while ago have almost always arrived: clear them out
+          in one go instead of opening each. */}
+      {filter === 'sent' && longSent.length > 0 && (
+        <SecondaryButton
+          className="mb-3 w-full"
+          onClick={() => markAll(longSent.map((o) => o.id), 'delivered')}
+          disabled={bulkUpdate.isPending}
+        >
+          <PackageCheck size={15} />
+          Mark {longSent.length} sent over {DELIVERED_AFTER_DAYS} days ago delivered
+        </SecondaryButton>
       )}
 
       <QueryState

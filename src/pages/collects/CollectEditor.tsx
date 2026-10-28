@@ -50,12 +50,15 @@ function formFor(c: Collect | 'new') {
 export default function CollectEditor({
   collect,
   positions: savedPositions,
+  draftItems = [],
   items,
   onClose,
 }: {
   collect: Collect | 'new'
   /** This collect's saved positions (empty for a new one). */
   positions: CollectItem[]
+  /** Catalog items to start a new collect with (a reprint), with last time's print cost. */
+  draftItems?: { item_id: string; print_cost: number | null }[]
   items: Item[]
   onClose: () => void
 }) {
@@ -71,14 +74,15 @@ export default function CollectEditor({
   // of inserting a second copy.
   const [editing, setEditing] = useState<Collect | 'new'>(collect)
   const [form, setForm] = useState(() => formFor(collect))
-  const [positions, setPositions] = useState<PositionRow[]>(() =>
-    savedPositions.map((p) => ({
+  const [positions, setPositions] = useState<PositionRow[]>(() => [
+    ...savedPositions.map((p) => ({
       item_id: p.item_id ?? '',
       name_text: p.name_text ?? '',
       qty: String(p.qty),
       print_cost: p.print_cost?.toString() ?? '',
     })),
-  )
+    ...draftItems.map((d) => ({ item_id: d.item_id, name_text: '', qty: '', print_cost: d.print_cost?.toString() ?? '' })),
+  ])
   const [formError, setFormError] = useState<string | null>(null)
   const [receiveBusy, setReceiveBusy] = useState(false)
   // Index of the position row whose item picker modal is open

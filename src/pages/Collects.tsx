@@ -10,7 +10,7 @@ import PageHeader from '../components/PageHeader'
 import QueryState from '../components/QueryState'
 import { SkeletonRows } from '../components/Skeleton'
 import { SECTIONS } from '../components/sections'
-import { useLaunchFlag } from '../hooks/useLaunchFlag'
+import { useLaunchFlag, useLaunchParam } from '../hooks/useLaunchFlag'
 import SearchInput from '../components/SearchInput'
 import StatusBadge from '../components/StatusBadge'
 import { AddButton } from '../components/FormField'
@@ -71,6 +71,10 @@ export default function Collects() {
     return STATUS_FILTERS.some((f) => f.key === saved) ? (saved as StatusFilter) : 'all'
   })
   const launchNew = useLaunchFlag()
+  // `?items=a,b,c` (the dashboard's "Plan a reprint") starts the new collect
+  // with those catalog items as positions.
+  const launchItems = useLaunchParam('items')
+  const [draftItems, setDraftItems] = useState<string[]>(() => launchItems?.split(',').filter(Boolean) ?? [])
   const [editing, setEditing] = useState<Collect | 'new' | null>(launchNew ? 'new' : null)
 
   // `?open=<id>` (from the dashboard or an expense row) opens that collect —
@@ -88,6 +92,7 @@ export default function Collects() {
 
   function closeEditor() {
     setEditing(null)
+    setDraftItems([])
     if (openId) {
       setDismissedId(openId)
       setSearchParams(
@@ -113,6 +118,14 @@ export default function Collects() {
       arr.push(r)
       m.set(r.collect_id, arr)
     }
+    return m
+  }, [collectItems])
+
+  // What each item cost to print last time, to prefill a reprint.
+  const lastPrintCost = useMemo(() => {
+    const m = new Map<string, number>()
+    const rows = [...(collectItems ?? [])].sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+    for (const r of rows) if (r.item_id && r.print_cost != null) m.set(r.item_id, r.print_cost)
     return m
   }, [collectItems])
 
@@ -252,11 +265,15 @@ export default function Collects() {
         })}
       </div>
 
-      {current !== null && (
+      {/* A reprint waits for past positions, which prefill its print costs. */}
+      {current !== null && (current !== 'new' || draftItems.length === 0 || collectItems) && (
         <CollectEditor
           key={current === 'new' ? 'new' : current.id}
           collect={current}
           positions={current === 'new' ? [] : (positionsByCollect.get(current.id) ?? [])}
+          draftItems={
+            current === 'new' ? draftItems.map((id) => ({ item_id: id, print_cost: lastPrintCost.get(id) ?? null })) : []
+          }
           items={items ?? []}
           onClose={closeEditor}
         />
